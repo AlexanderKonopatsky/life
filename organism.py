@@ -34,6 +34,9 @@ class Organism:
         self.generation = 0
         self.fitness = 0  # Показатель приспособленности
         
+        # Максимальная продолжительность жизни зависит от типа
+        self.max_lifespan = self._calculate_max_lifespan()
+        
         # Поведенческое состояние
         self.target = None  # Цель (пища или добыча)
         self.fleeing_from = None  # От кого убегает
@@ -57,6 +60,44 @@ class Organism:
         """Определяет, является ли организм всеядным"""
         return 0.4 <= self.genes['diet_preference'] <= 0.6
         
+    def _calculate_max_lifespan(self):
+        """Рассчитывает максимальную продолжительность жизни в зависимости от типа"""
+        # Базовая продолжительность жизни зависит от типа диеты
+        if self.is_predator():
+            # Хищники живут дольше, но тратят больше энергии
+            base_lifespan = random.uniform(600, 800)
+        elif self.is_herbivore():
+            # Травоядные живут меньше, более уязвимы
+            base_lifespan = random.uniform(400, 600)
+        else:  # всеядные
+            # Всеядные занимают промежуточное положение
+            base_lifespan = random.uniform(500, 700)
+        
+        # Влияние размера тела (большие организмы обычно живут дольше)
+        size_modifier = 1.0 + (self.genes['size'] - 7.5) / 15.0  # -0.5 до +0.5
+        
+        # Влияние эффективности энергии (более эффективные живут дольше)
+        efficiency_modifier = 0.8 + self.genes['energy_efficiency'] * 0.4  # 0.8 до 1.2
+        
+        final_lifespan = base_lifespan * size_modifier * efficiency_modifier
+        return max(300, min(1000, final_lifespan))  # Ограничиваем от 300 до 1000
+        
+    def _get_age_modifier(self):
+        """Рассчитывает модификатор способностей в зависимости от возраста"""
+        # Организмы достигают пика в середине жизни, затем стареют
+        age_ratio = self.age / self.max_lifespan
+        
+        if age_ratio < 0.3:
+            # Молодые (0-30% жизни): способности растут
+            return 0.7 + age_ratio * 1.0  # 0.7 до 1.0
+        elif age_ratio < 0.7:
+            # Взрослые (30-70% жизни): пик способностей
+            return 1.0
+        else:
+            # Старые (70-100% жизни): способности снижаются
+            decline = (age_ratio - 0.7) / 0.3  # 0 до 1
+            return 1.0 - decline * 0.4  # 1.0 до 0.6
+        
     def update(self, dt, world_width, world_height, spatial_grid=None):
         """Обновляет состояние организма на каждом шаге симуляции"""
         if not self.alive:
@@ -77,7 +118,9 @@ class Organism:
             if self.is_predator():
                 base_consumption *= 1.5
             
-            self.energy -= base_consumption / self.genes['energy_efficiency']
+            # Старение влияет на эффективность использования энергии
+            age_modified_efficiency = self.genes['energy_efficiency'] * self._get_age_modifier()
+            self.energy -= base_consumption / max(0.1, age_modified_efficiency)
             
             # Расчёт приспособленности
             self.fitness = self.energy * 0.1 + self.age * 0.05 + (200 - self.last_meal) * 0.02
@@ -91,8 +134,8 @@ class Organism:
             # Поиск пищи и охота с оптимизацией
             self._optimized_interactions(spatial_grid)
             
-            # Проверка на смерть
-            if self.energy <= 0 or self.age > 2000:
+            # Проверка на смерть (энергия или возраст)
+            if self.energy <= 0 or self.age > self.max_lifespan:
                 self.alive = False
         else:
             # Старый неоптимизированный код для совместимости (вызывается из _simple_update)
@@ -117,7 +160,9 @@ class Organism:
         if self.is_predator():
             base_consumption *= 1.5
         
-        self.energy -= base_consumption / self.genes['energy_efficiency']
+        # Старение влияет на эффективность использования энергии
+        age_modified_efficiency = self.genes['energy_efficiency'] * self._get_age_modifier()
+        self.energy -= base_consumption / max(0.1, age_modified_efficiency)
         
         # Расчёт приспособленности
         self.fitness = self.energy * 0.1 + self.age * 0.05 + (200 - self.last_meal) * 0.02
@@ -137,8 +182,8 @@ class Organism:
         if other_organisms is not None and (self.is_predator() or self.is_omnivore()):
             self._hunt(other_organisms)
             
-        # Проверка на смерть
-        if self.energy <= 0 or self.age > 2000:
+        # Проверка на смерть (энергия или возраст)
+        if self.energy <= 0 or self.age > self.max_lifespan:
             self.alive = False
             
     def _update_behavior(self, other_organisms, food_sources):
@@ -196,7 +241,7 @@ class Organism:
                 
     def _move(self, dt, world_width, world_height):
         """Движение организма с учётом поведения"""
-        speed = self.genes['speed']
+        speed = self.genes['speed'] * self._get_age_modifier()
         
         # Убегание от хищника
         if self.fleeing_from:
