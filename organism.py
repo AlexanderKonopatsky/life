@@ -12,12 +12,14 @@ class Organism:
         # Гены организма (если не переданы, генерируются случайно)
         if genes is None:
             self.genes = {
-                'speed': random.uniform(0.5, 3.0),           # Скорость передвижения
-                'size': random.uniform(2, 8),                # Размер организма
+                'speed': random.uniform(0.5, 4.0),           # Скорость передвижения
+                'size': random.uniform(3, 12),               # Размер организма
                 'energy_efficiency': random.uniform(0.3, 1.0), # Эффективность использования энергии
-                'reproduction_threshold': random.uniform(50, 100), # Порог размножения
+                'reproduction_threshold': random.uniform(80, 150), # Порог размножения
                 'aggression': random.uniform(0.0, 1.0),      # Агрессивность (влияет на поведение)
                 'mutation_rate': random.uniform(0.01, 0.1),  # Частота мутаций
+                'diet_preference': random.uniform(0.0, 1.0), # 0=травоядный, 1=хищник
+                'fear_sensitivity': random.uniform(0.0, 1.0), # Чувствительность к угрозам
                 'color_r': random.randint(0, 255),           # Цвет (красный)
                 'color_g': random.randint(0, 255),           # Цвет (зеленый)  
                 'color_b': random.randint(0, 255),           # Цвет (синий)
@@ -32,10 +34,28 @@ class Organism:
         self.generation = 0
         self.fitness = 0  # Показатель приспособленности
         
+        # Поведенческое состояние
+        self.target = None  # Цель (пища или добыча)
+        self.fleeing_from = None  # От кого убегает
+        self.hunt_cooldown = 0  # Перерыв между атаками
+        self.last_meal = 0  # Время последнего приёма пищи
+        
         # Движение
         self.direction = random.uniform(0, 2 * math.pi)
         self.velocity_x = 0
         self.velocity_y = 0
+        
+    def is_predator(self):
+        """Определяет, является ли организм хищником"""
+        return self.genes['diet_preference'] > 0.6
+        
+    def is_herbivore(self):
+        """Определяет, является ли организм травоядным"""
+        return self.genes['diet_preference'] < 0.4
+        
+    def is_omnivore(self):
+        """Определяет, является ли организм всеядным"""
+        return 0.4 <= self.genes['diet_preference'] <= 0.6
         
     def update(self, dt, world_width, world_height, food_sources, other_organisms):
         """Обновляет состояние организма на каждом шаге симуляции"""
@@ -44,35 +64,129 @@ class Organism:
             
         # Увеличиваем возраст
         self.age += dt
+        self.last_meal += dt
+        if self.hunt_cooldown > 0:
+            self.hunt_cooldown -= dt
         
-        # Потребление энергии базовое (значительно уменьшено)
-        energy_consumption = (self.genes['size'] * 0.02 + self.genes['speed'] * 0.01) * dt
-        self.energy -= energy_consumption / self.genes['energy_efficiency']
+        # Потребление энергии зависит от типа и активности
+        base_consumption = (self.genes['size'] * 0.015 + self.genes['speed'] * 0.008) * dt
         
-        # Расчёт приспособленности (больше энергии и возраста = лучше)
-        self.fitness = self.energy * 0.1 + self.age * 0.05
+        # Хищники тратят больше энергии
+        if self.is_predator():
+            base_consumption *= 1.5
         
-        # Движение
+        self.energy -= base_consumption / self.genes['energy_efficiency']
+        
+        # Расчёт приспособленности
+        self.fitness = self.energy * 0.1 + self.age * 0.05 + (200 - self.last_meal) * 0.02
+        
+        # Определяем поведение и цели
+        self._update_behavior(other_organisms, food_sources)
+        
+        # Движение с учётом поведения
         self._move(dt, world_width, world_height)
         
-        # Поиск пищи
-        self._seek_food(food_sources)
+        # Поиск пищи (растения для травоядных)
+        if self.is_herbivore() or self.is_omnivore():
+            self._seek_food(food_sources)
         
-        # Взаимодействие с другими организмами
-        self._interact_with_others(other_organisms)
+        # Охота (для хищников)
+        if self.is_predator() or self.is_omnivore():
+            self._hunt(other_organisms)
         
         # Проверка на смерть (увеличиваем продолжительность жизни)
         if self.energy <= 0 or self.age > 2000:
             self.alive = False
             
-    def _move(self, dt, world_width, world_height):
-        """Движение организма"""
-        # Случайные изменения направления
-        if random.random() < 0.1:
-            self.direction += random.uniform(-0.5, 0.5)
+    def _update_behavior(self, other_organisms, food_sources):
+        """Обновляет поведенческие цели"""
+        self.target = None
+        self.fleeing_from = None
+        
+        # Поиск угроз для травоядных
+        if self.is_herbivore() or (self.is_omnivore() and self.genes['fear_sensitivity'] > 0.5):
+            closest_predator = None
+            min_predator_distance = float('inf')
             
-        # Вычисляем скорость
+            for other in other_organisms:
+                if other != self and other.alive and other.is_predator():
+                    distance = math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+                    if distance < min_predator_distance and distance < 50:
+                        min_predator_distance = distance
+                        closest_predator = other
+            
+            if closest_predator and min_predator_distance < self.genes['fear_sensitivity'] * 60:
+                self.fleeing_from = closest_predator
+                return
+        
+        # Поиск цели для хищников
+        if self.is_predator() and self.hunt_cooldown <= 0:
+            closest_prey = None
+            min_prey_distance = float('inf')
+            
+            for other in other_organisms:
+                if other != self and other.alive and not other.is_predator():
+                    # Хищники предпочитают меньших по размеру
+                    if other.genes['size'] <= self.genes['size'] * 1.2:
+                        distance = math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+                        if distance < min_prey_distance and distance < 80:
+                            min_prey_distance = distance
+                            closest_prey = other
+            
+            if closest_prey:
+                self.target = closest_prey
+                return
+        
+        # Поиск пищи для травоядных и всеядных
+        if (self.is_herbivore() or self.is_omnivore()) and food_sources:
+            closest_food = None
+            min_food_distance = float('inf')
+            
+            for food in food_sources:
+                distance = math.sqrt((self.x - food['x'])**2 + (self.y - food['y'])**2)
+                if distance < min_food_distance:
+                    min_food_distance = distance
+                    closest_food = food
+            
+            if closest_food and min_food_distance < 100:
+                self.target = closest_food
+                
+    def _move(self, dt, world_width, world_height):
+        """Движение организма с учётом поведения"""
         speed = self.genes['speed']
+        
+        # Убегание от хищника
+        if self.fleeing_from:
+            # Направление от хищника
+            dx = self.x - self.fleeing_from.x
+            dy = self.y - self.fleeing_from.y
+            distance = math.sqrt(dx**2 + dy**2)
+            if distance > 0:
+                self.direction = math.atan2(dy, dx)
+                speed *= 1.5  # Ускорение при бегстве
+        
+        # Преследование цели
+        elif self.target:
+            if isinstance(self.target, dict):  # Пища
+                dx = self.target['x'] - self.x
+                dy = self.target['y'] - self.y
+            else:  # Другой организм
+                dx = self.target.x - self.x
+                dy = self.target.y - self.y
+            
+            distance = math.sqrt(dx**2 + dy**2)
+            if distance > 0:
+                self.direction = math.atan2(dy, dx)
+                # Хищники ускоряются при охоте
+                if self.is_predator():
+                    speed *= 1.3
+        
+        # Случайные изменения направления при отсутствии целей
+        else:
+            if random.random() < 0.15:
+                self.direction += random.uniform(-0.8, 0.8)
+        
+        # Вычисляем скорость
         self.velocity_x = math.cos(self.direction) * speed
         self.velocity_y = math.sin(self.direction) * speed
         
@@ -90,35 +204,55 @@ class Organism:
             self.y = max(0, min(world_height, self.y))
             
     def _seek_food(self, food_sources):
-        """Поиск и потребление пищи"""
+        """Поиск и потребление растительной пищи"""
         for food in food_sources:
             distance = math.sqrt((self.x - food['x'])**2 + (self.y - food['y'])**2)
             if distance < self.genes['size'] + food['size']:
-                # Потребляем пищу (увеличиваем получение энергии)
-                energy_gain = food['energy'] * self.genes['energy_efficiency'] * 2.5
+                # Потребляем пищу
+                energy_multiplier = 2.0 if self.is_herbivore() else 1.5  # Травоядные эффективнее
+                energy_gain = food['energy'] * self.genes['energy_efficiency'] * energy_multiplier
                 self.energy += energy_gain
                 food['consumed'] = True
+                self.last_meal = 0  # Сбрасываем счётчик голода
                 break
                 
-    def _interact_with_others(self, other_organisms):
-        """Взаимодействие с другими организмами"""
-        for other in other_organisms:
-            if other == self or not other.alive:
+    def _hunt(self, other_organisms):
+        """Охота на других организмов"""
+        if self.hunt_cooldown > 0:
+            return
+            
+        for prey in other_organisms:
+            if prey == self or not prey.alive:
                 continue
                 
-            distance = math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
-            
-            # Если организмы близко
-            if distance < self.genes['size'] + other.genes['size']:
-                # Агрессивное взаимодействие
-                if self.genes['aggression'] > 0.7 and other.genes['aggression'] > 0.7:
-                    # Борьба - более крупный и быстрый побеждает
-                    if self.genes['size'] * self.genes['speed'] > other.genes['size'] * other.genes['speed']:
-                        self.energy += other.energy * 0.3
-                        other.energy -= other.energy * 0.5
+            # Хищники атакуют травоядных и меньших всеядных
+            if not prey.is_predator() and prey.genes['size'] <= self.genes['size'] * 1.2:
+                distance = math.sqrt((self.x - prey.x)**2 + (self.y - prey.y)**2)
+                
+                if distance < self.genes['size'] + prey.genes['size']:
+                    # Успешная атака зависит от размера, скорости и агрессивности
+                    attack_power = (self.genes['size'] + self.genes['speed'] + self.genes['aggression'] * 10) / 3
+                    defense_power = (prey.genes['size'] + prey.genes['speed'] + prey.genes['fear_sensitivity'] * 5) / 3
+                    
+                    if attack_power > defense_power * random.uniform(0.8, 1.2):
+                        # Успешная охота
+                        energy_gain = prey.energy * 0.6 * self.genes['energy_efficiency']
+                        self.energy += energy_gain
+                        self.last_meal = 0
+                        
+                        # Жертва теряет энергию или умирает
+                        prey.energy -= prey.energy * 0.8
+                        if prey.energy <= 0:
+                            prey.alive = False
+                            
+                        self.hunt_cooldown = 50  # Перерыв между атаками
+                        break
                     else:
-                        other.energy += self.energy * 0.3
-                        self.energy -= self.energy * 0.5
+                        # Неудачная атака
+                        self.hunt_cooldown = 20
+                        self.energy -= 5  # Тратим энергию на неудачную атаку
+                
+
                         
     def can_reproduce(self):
         """Проверяет, может ли организм размножаться"""
@@ -146,10 +280,10 @@ class Organism:
                 
                 # Ограничения на значения генов
                 if gene_name == 'speed':
-                    new_genes[gene_name] = min(5.0, new_genes[gene_name])
+                    new_genes[gene_name] = min(6.0, new_genes[gene_name])
                 elif gene_name == 'size':
-                    new_genes[gene_name] = min(15.0, new_genes[gene_name])
-                elif gene_name in ['energy_efficiency', 'aggression']:
+                    new_genes[gene_name] = min(20.0, new_genes[gene_name])
+                elif gene_name in ['energy_efficiency', 'aggression', 'diet_preference', 'fear_sensitivity']:
                     new_genes[gene_name] = min(1.0, new_genes[gene_name])
                 elif gene_name == 'mutation_rate':
                     new_genes[gene_name] = min(0.2, new_genes[gene_name])
@@ -165,12 +299,30 @@ class Organism:
         return child
         
     def get_color(self):
-        """Возвращает цвет организма для отображения"""
-        return (
-            int(self.genes['color_r']),
-            int(self.genes['color_g']),
-            int(self.genes['color_b'])
-        )
+        """Возвращает цвет организма для отображения с учётом типа"""
+        base_r = int(self.genes['color_r'])
+        base_g = int(self.genes['color_g'])
+        base_b = int(self.genes['color_b'])
+        
+        # Модифицируем цвет в зависимости от типа
+        if self.is_predator():
+            # Хищники - красноватые оттенки
+            return (min(255, base_r + 80), max(0, base_g - 40), max(0, base_b - 40))
+        elif self.is_herbivore():
+            # Травоядные - зеленоватые оттенки
+            return (max(0, base_r - 40), min(255, base_g + 80), max(0, base_b - 40))
+        else:
+            # Всеядные - синеватые оттенки
+            return (max(0, base_r - 40), max(0, base_g - 40), min(255, base_b + 80))
+            
+    def get_type_name(self):
+        """Возвращает название типа организма"""
+        if self.is_predator():
+            return "Хищник"
+        elif self.is_herbivore():
+            return "Травоядный"
+        else:
+            return "Всеядный"
         
     def get_info(self):
         """Возвращает информацию об организме"""

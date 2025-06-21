@@ -5,7 +5,7 @@ from organism import Organism
 class EvolutionSimulation:
     """Основной класс симуляции эволюции"""
     
-    def __init__(self, width=800, height=600):
+    def __init__(self, width=1400, height=1000):
         self.width = width
         self.height = height
         
@@ -24,6 +24,9 @@ class EvolutionSimulation:
         # Статистика
         self.stats = {
             'population': 0,
+            'predators': 0,
+            'herbivores': 0,
+            'omnivores': 0,
             'avg_speed': 0,
             'avg_size': 0,
             'avg_energy_efficiency': 0,
@@ -62,15 +65,39 @@ class EvolutionSimulation:
         # Удаляем съеденную пищу
         self.food_sources = [food for food in self.food_sources if not food.get('consumed', False)]
         
-        # Добавляем новую пищу
+        # Добавляем новую пищу (растения)
         while len(self.food_sources) < self.max_food and random.random() < self.food_spawn_rate:
-            food = {
-                'x': random.uniform(10, self.width - 10),
-                'y': random.uniform(10, self.height - 10),
-                'size': random.uniform(2, 5),
-                'energy': random.uniform(10, 25),
-                'consumed': False
-            }
+            # Разные типы растений
+            plant_type = random.choice(['berry', 'grass', 'fruit'])
+            
+            if plant_type == 'berry':
+                food = {
+                    'x': random.uniform(10, self.width - 10),
+                    'y': random.uniform(10, self.height - 10),
+                    'size': random.uniform(1, 3),
+                    'energy': random.uniform(15, 30),
+                    'type': 'berry',
+                    'consumed': False
+                }
+            elif plant_type == 'grass':
+                food = {
+                    'x': random.uniform(10, self.width - 10),
+                    'y': random.uniform(10, self.height - 10),
+                    'size': random.uniform(2, 4),
+                    'energy': random.uniform(8, 20),
+                    'type': 'grass',
+                    'consumed': False
+                }
+            else:  # fruit
+                food = {
+                    'x': random.uniform(10, self.width - 10),
+                    'y': random.uniform(10, self.height - 10),
+                    'size': random.uniform(3, 6),
+                    'energy': random.uniform(25, 45),
+                    'type': 'fruit',
+                    'consumed': False
+                }
+            
             self.food_sources.append(food)
             
     def _handle_reproduction(self):
@@ -107,6 +134,13 @@ class EvolutionSimulation:
             return
             
         self.stats['population'] = len(alive_organisms)
+        
+        # Подсчёт типов организмов
+        self.stats['predators'] = sum(1 for org in alive_organisms if org.is_predator())
+        self.stats['herbivores'] = sum(1 for org in alive_organisms if org.is_herbivore())
+        self.stats['omnivores'] = sum(1 for org in alive_organisms if org.is_omnivore())
+        
+        # Средние значения генов
         self.stats['avg_speed'] = sum(org.genes['speed'] for org in alive_organisms) / len(alive_organisms)
         self.stats['avg_size'] = sum(org.genes['size'] for org in alive_organisms) / len(alive_organisms)
         self.stats['avg_energy_efficiency'] = sum(org.genes['energy_efficiency'] for org in alive_organisms) / len(alive_organisms)
@@ -161,6 +195,9 @@ class EvolutionSimulation:
         self.time_step = 0
         self.stats = {
             'population': 0,
+            'predators': 0,
+            'herbivores': 0,
+            'omnivores': 0,
             'avg_speed': 0,
             'avg_size': 0,
             'avg_energy_efficiency': 0,

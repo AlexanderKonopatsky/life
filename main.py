@@ -11,10 +11,10 @@ class EvolutionGameGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Эволюция: Простая жизнь")
-        self.root.geometry("1200x800")
+        self.root.geometry("1600x1200")
         
         # Симуляция
-        self.simulation = EvolutionSimulation(width=800, height=600)
+        self.simulation = EvolutionSimulation(width=1400, height=1000)
         self.running = False
         self.simulation_speed = 1.0
         self.selected_organism = None
@@ -36,7 +36,7 @@ class EvolutionGameGUI:
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Канвас для симуляции
-        self.canvas = tk.Canvas(left_frame, width=800, height=600, bg='#001122')
+        self.canvas = tk.Canvas(left_frame, width=1400, height=1000, bg='#001122')
         self.canvas.pack(pady=5)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         
@@ -125,12 +125,24 @@ class EvolutionGameGUI:
         # Очистка канваса
         self.canvas.delete("all")
         
-        # Отрисовка пищи
+        # Отрисовка пищи (растения)
         for food in self.simulation.get_food_sources():
             x, y = food['x'], food['y']
             size = food['size']
+            
+            # Разные цвета для разных типов растений
+            if food.get('type') == 'berry':
+                color = '#8B0000'  # Тёмно-красный
+                outline = '#660000'
+            elif food.get('type') == 'fruit':
+                color = '#FFA500'  # Оранжевый
+                outline = '#FF8C00'
+            else:  # grass
+                color = '#228B22'  # Зелёный
+                outline = '#006400'
+                
             self.canvas.create_oval(x-size, y-size, x+size, y+size, 
-                                  fill='green', outline='darkgreen')
+                                  fill=color, outline=outline)
             
         # Отрисовка организмов
         organisms = self.simulation.get_organisms()
@@ -187,22 +199,26 @@ class EvolutionGameGUI:
         """Обновление статистики"""
         stats = self.simulation.get_statistics()
         
-        stats_text = f"""ОБЩАЯ СТАТИСТИКА
+        stats_text = f"""ЭКОСИСТЕМА
 
-Популяция: {stats['population']}
+Всего организмов: {stats['population']}
+🔴 Хищники: {stats['predators']}
+🟢 Травоядные: {stats['herbivores']}
+🔵 Всеядные: {stats['omnivores']}
+
+ЭВОЛЮЦИЯ:
 Поколение: {stats['avg_generation']:.1f}
-Всего рождений: {stats['total_births']}
-Всего смертей: {stats['total_deaths']}
+Рождений: {stats['total_births']}
+Смертей: {stats['total_deaths']}
 
-СРЕДНИЕ ЗНАЧЕНИЯ ГЕНОВ:
+СРЕДНИЕ ГЕНЫ:
 Скорость: {stats['avg_speed']:.2f}
 Размер: {stats['avg_size']:.2f}
 Эффективность: {stats['avg_energy_efficiency']:.2f}
 Агрессивность: {stats['avg_aggression']:.2f}
-Частота мутаций: {stats['avg_mutation_rate']:.3f}
 Приспособленность: {stats['avg_fitness']:.1f}
 
-ВРЕМЯ СИМУЛЯЦИИ: {self.simulation.time_step}
+ВРЕМЯ: {self.simulation.time_step}
 """
         
         self.stats_text.delete(1.0, tk.END)
@@ -218,25 +234,33 @@ class EvolutionGameGUI:
             best_organisms = self.simulation.get_best_organisms(top_n=len(self.simulation.get_organisms()))
             rank = best_organisms.index(org) + 1 if org in best_organisms else "?"
             
-            info_text = f"""ВЫБРАННЫЙ ОРГАНИЗМ
+            # Определяем эмодзи для типа
+            type_emoji = "🔴" if org.is_predator() else "🟢" if org.is_herbivore() else "🔵"
+            
+            info_text = f"""{type_emoji} {org.get_type_name().upper()}
 
 Позиция: ({info['position'][0]:.1f}, {info['position'][1]:.1f})
 Энергия: {info['energy']:.1f}
 Возраст: {info['age']:.1f}
 Поколение: {info['generation']}
-Приспособленность: {info['fitness']:.1f} (#{rank})
+Ранг: #{rank} из {len(self.simulation.get_organisms())}
+Приспособленность: {info['fitness']:.1f}
 
-ГЕНЫ:
+ОСНОВНЫЕ ГЕНЫ:
 Скорость: {info['genes']['speed']:.2f}
 Размер: {info['genes']['size']:.2f}
 Эффективность: {info['genes']['energy_efficiency']:.2f}
-Порог размножения: {info['genes']['reproduction_threshold']:.1f}
 Агрессивность: {info['genes']['aggression']:.2f}
-Частота мутаций: {info['genes']['mutation_rate']:.3f}
 
-ЦВЕТ RGB: ({info['genes']['color_r']}, {info['genes']['color_g']}, {info['genes']['color_b']})
+ПОВЕДЕНИЕ:
+Диета: {info['genes']['diet_preference']:.2f}
+Страх: {info['genes']['fear_sensitivity']:.2f}
+Мутации: {info['genes']['mutation_rate']:.3f}
 
-Может размножаться: {'Да' if org.can_reproduce() else 'Нет'}
+СОСТОЯНИЕ:
+Размножение: {'Да' if org.can_reproduce() else 'Нет'}
+Цель: {type(org.target).__name__ if org.target else 'Нет'}
+Убегает: {'Да' if org.fleeing_from else 'Нет'}
 """
         else:
             info_text = "Нажмите на организм\nдля получения информации"
