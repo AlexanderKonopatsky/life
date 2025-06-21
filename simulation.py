@@ -16,10 +16,10 @@ class EvolutionSimulation:
         self.time_step = 0
         
         # Настройки симуляции
-        self.max_organisms = 100
+        self.max_organisms = None  # Убираем ограничение популяции
         self.initial_organisms = 20
-        self.food_spawn_rate = 0.3
-        self.max_food = 50
+        self.food_spawn_rate = 0.5  # Увеличиваем частоту появления пищи
+        self.max_food = 80  # Больше пищи
         
         # Статистика
         self.stats = {
@@ -28,8 +28,21 @@ class EvolutionSimulation:
             'avg_size': 0,
             'avg_energy_efficiency': 0,
             'avg_generation': 0,
+            'avg_aggression': 0,
+            'avg_mutation_rate': 0,
+            'avg_fitness': 0,
             'total_births': 0,
             'total_deaths': 0
+        }
+        
+        # История изменений генов для графиков
+        self.gene_history = {
+            'speed': [],
+            'size': [],
+            'energy_efficiency': [],
+            'aggression': [],
+            'mutation_rate': [],
+            'fitness': []
         }
         
         # Инициализация
@@ -66,15 +79,14 @@ class EvolutionSimulation:
         
         for organism in self.organisms:
             if organism.alive and organism.can_reproduce():
-                # Ограничиваем популяцию
-                if len(self.organisms) + len(new_organisms) < self.max_organisms:
-                    child = organism.reproduce()
-                    if child:
-                        # Проверяем границы для потомка
-                        child.x = max(10, min(self.width - 10, child.x))
-                        child.y = max(10, min(self.height - 10, child.y))
-                        new_organisms.append(child)
-                        self.stats['total_births'] += 1
+                # Размножение без ограничений (естественный отбор сам регулирует)
+                child = organism.reproduce()
+                if child:
+                    # Проверяем границы для потомка
+                    child.x = max(10, min(self.width - 10, child.x))
+                    child.y = max(10, min(self.height - 10, child.y))
+                    new_organisms.append(child)
+                    self.stats['total_births'] += 1
                         
         self.organisms.extend(new_organisms)
         
@@ -99,6 +111,18 @@ class EvolutionSimulation:
         self.stats['avg_size'] = sum(org.genes['size'] for org in alive_organisms) / len(alive_organisms)
         self.stats['avg_energy_efficiency'] = sum(org.genes['energy_efficiency'] for org in alive_organisms) / len(alive_organisms)
         self.stats['avg_generation'] = sum(org.generation for org in alive_organisms) / len(alive_organisms)
+        self.stats['avg_aggression'] = sum(org.genes['aggression'] for org in alive_organisms) / len(alive_organisms)
+        self.stats['avg_mutation_rate'] = sum(org.genes['mutation_rate'] for org in alive_organisms) / len(alive_organisms)
+        self.stats['avg_fitness'] = sum(org.fitness for org in alive_organisms) / len(alive_organisms)
+        
+        # Сохраняем историю для графиков (каждые 10 шагов)
+        if self.time_step % 10 == 0:
+            self.gene_history['speed'].append(self.stats['avg_speed'])
+            self.gene_history['size'].append(self.stats['avg_size'])
+            self.gene_history['energy_efficiency'].append(self.stats['avg_energy_efficiency'])
+            self.gene_history['aggression'].append(self.stats['avg_aggression'])
+            self.gene_history['mutation_rate'].append(self.stats['avg_mutation_rate'])
+            self.gene_history['fitness'].append(self.stats['avg_fitness'])
         
         # Определяем новое поколение
         max_generation = max(org.generation for org in alive_organisms)
@@ -141,15 +165,19 @@ class EvolutionSimulation:
             'avg_size': 0,
             'avg_energy_efficiency': 0,
             'avg_generation': 0,
+            'avg_aggression': 0,
+            'avg_mutation_rate': 0,
+            'avg_fitness': 0,
             'total_births': 0,
             'total_deaths': 0
         }
+        # Очищаем историю генов
+        for key in self.gene_history:
+            self.gene_history[key] = []
         self._spawn_initial_organisms()
         
-    def set_parameters(self, max_organisms=None, initial_organisms=None, food_spawn_rate=None):
+    def set_parameters(self, initial_organisms=None, food_spawn_rate=None):
         """Устанавливает параметры симуляции"""
-        if max_organisms is not None:
-            self.max_organisms = max_organisms
         if initial_organisms is not None:
             self.initial_organisms = initial_organisms
         if food_spawn_rate is not None:
@@ -196,3 +224,14 @@ class EvolutionSimulation:
             }
             
         return gen_stats
+        
+    def get_gene_history(self):
+        """Возвращает историю изменений генов"""
+        return self.gene_history.copy()
+        
+    def get_best_organisms(self, top_n=5):
+        """Возвращает самых приспособленных организмов"""
+        alive_organisms = [org for org in self.organisms if org.alive]
+        if not alive_organisms:
+            return []
+        return sorted(alive_organisms, key=lambda x: x.fitness, reverse=True)[:top_n]

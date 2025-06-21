@@ -26,10 +26,11 @@ class Organism:
             self.genes = genes.copy()
         
         # Состояние организма
-        self.energy = 50
+        self.energy = 100  # Увеличиваем начальную энергию
         self.age = 0
         self.alive = True
         self.generation = 0
+        self.fitness = 0  # Показатель приспособленности
         
         # Движение
         self.direction = random.uniform(0, 2 * math.pi)
@@ -44,9 +45,12 @@ class Organism:
         # Увеличиваем возраст
         self.age += dt
         
-        # Потребление энергии базовое
-        energy_consumption = (self.genes['size'] * 0.1 + self.genes['speed'] * 0.05) * dt
+        # Потребление энергии базовое (значительно уменьшено)
+        energy_consumption = (self.genes['size'] * 0.02 + self.genes['speed'] * 0.01) * dt
         self.energy -= energy_consumption / self.genes['energy_efficiency']
+        
+        # Расчёт приспособленности (больше энергии и возраста = лучше)
+        self.fitness = self.energy * 0.1 + self.age * 0.05
         
         # Движение
         self._move(dt, world_width, world_height)
@@ -57,8 +61,8 @@ class Organism:
         # Взаимодействие с другими организмами
         self._interact_with_others(other_organisms)
         
-        # Проверка на смерть
-        if self.energy <= 0 or self.age > 1000:
+        # Проверка на смерть (увеличиваем продолжительность жизни)
+        if self.energy <= 0 or self.age > 2000:
             self.alive = False
             
     def _move(self, dt, world_width, world_height):
@@ -90,8 +94,8 @@ class Organism:
         for food in food_sources:
             distance = math.sqrt((self.x - food['x'])**2 + (self.y - food['y'])**2)
             if distance < self.genes['size'] + food['size']:
-                # Потребляем пищу
-                energy_gain = food['energy'] * self.genes['energy_efficiency']
+                # Потребляем пищу (увеличиваем получение энергии)
+                energy_gain = food['energy'] * self.genes['energy_efficiency'] * 2.5
                 self.energy += energy_gain
                 food['consumed'] = True
                 break
@@ -118,15 +122,15 @@ class Organism:
                         
     def can_reproduce(self):
         """Проверяет, может ли организм размножаться"""
-        return self.energy > self.genes['reproduction_threshold'] and self.age > 50
+        return self.energy > self.genes['reproduction_threshold'] and self.age > 100
         
     def reproduce(self):
         """Создает потомка с мутированными генами"""
         if not self.can_reproduce():
             return None
             
-        # Тратим энергию на размножение
-        self.energy -= self.genes['reproduction_threshold'] * 0.7
+        # Тратим энергию на размножение (уменьшаем затраты)
+        self.energy -= self.genes['reproduction_threshold'] * 0.3
         
         # Создаем мутированные гены
         new_genes = {}
@@ -156,7 +160,7 @@ class Organism:
         
         child = Organism(child_x, child_y, new_genes)
         child.generation = self.generation + 1
-        child.energy = 30  # Начальная энергия потомка
+        child.energy = 60  # Увеличиваем начальную энергию потомка
         
         return child
         
@@ -176,5 +180,6 @@ class Organism:
             'age': self.age,
             'generation': self.generation,
             'genes': self.genes,
-            'alive': self.alive
+            'alive': self.alive,
+            'fitness': self.fitness
         }

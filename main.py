@@ -47,6 +47,7 @@ class EvolutionGameGUI:
         ttk.Button(control_frame, text="Старт/Пауза", command=self._toggle_simulation).pack(side=tk.LEFT, padx=2)
         ttk.Button(control_frame, text="Сброс", command=self._reset_simulation).pack(side=tk.LEFT, padx=2)
         ttk.Button(control_frame, text="Настройки", command=self._show_settings).pack(side=tk.LEFT, padx=2)
+        ttk.Button(control_frame, text="Графики эволюции", command=self._show_evolution_graphs).pack(side=tk.LEFT, padx=2)
         
         # Правая панель (информация и статистика)
         right_frame = ttk.Frame(main_frame)
@@ -57,7 +58,7 @@ class EvolutionGameGUI:
         speed_frame.pack(fill=tk.X, pady=5)
         
         self.speed_var = tk.DoubleVar(value=1.0)
-        self.speed_scale = ttk.Scale(speed_frame, from_=0.1, to=5.0, variable=self.speed_var,
+        self.speed_scale = ttk.Scale(speed_frame, from_=0.1, to=50.0, variable=self.speed_var,
                                    orient=tk.HORIZONTAL, command=self._update_speed)
         self.speed_scale.pack(fill=tk.X, padx=5, pady=5)
         
@@ -132,14 +133,25 @@ class EvolutionGameGUI:
                                   fill='green', outline='darkgreen')
             
         # Отрисовка организмов
-        for organism in self.simulation.get_organisms():
+        organisms = self.simulation.get_organisms()
+        best_organisms = self.simulation.get_best_organisms(top_n=5)
+        
+        for organism in organisms:
             x, y = organism.x, organism.y
             size = organism.genes['size']
             color = self._rgb_to_hex(*organism.get_color())
             
             # Выделение выбранного организма
-            outline = 'yellow' if organism == self.selected_organism else 'black'
-            outline_width = 3 if organism == self.selected_organism else 1
+            if organism == self.selected_organism:
+                outline = 'yellow'
+                outline_width = 3
+            elif organism in best_organisms:
+                # Выделяем лучших организмов зелёной обводкой
+                outline = 'lime'
+                outline_width = 2
+            else:
+                outline = 'black'
+                outline_width = 1
             
             self.canvas.create_oval(x-size, y-size, x+size, y+size,
                                   fill=color, outline=outline, width=outline_width)
@@ -186,6 +198,9 @@ class EvolutionGameGUI:
 Скорость: {stats['avg_speed']:.2f}
 Размер: {stats['avg_size']:.2f}
 Эффективность: {stats['avg_energy_efficiency']:.2f}
+Агрессивность: {stats['avg_aggression']:.2f}
+Частота мутаций: {stats['avg_mutation_rate']:.3f}
+Приспособленность: {stats['avg_fitness']:.1f}
 
 ВРЕМЯ СИМУЛЯЦИИ: {self.simulation.time_step}
 """
@@ -199,12 +214,17 @@ class EvolutionGameGUI:
             org = self.selected_organism
             info = org.get_info()
             
+            # Определяем ранг организма по приспособленности
+            best_organisms = self.simulation.get_best_organisms(top_n=len(self.simulation.get_organisms()))
+            rank = best_organisms.index(org) + 1 if org in best_organisms else "?"
+            
             info_text = f"""ВЫБРАННЫЙ ОРГАНИЗМ
 
 Позиция: ({info['position'][0]:.1f}, {info['position'][1]:.1f})
 Энергия: {info['energy']:.1f}
 Возраст: {info['age']:.1f}
 Поколение: {info['generation']}
+Приспособленность: {info['fitness']:.1f} (#{rank})
 
 ГЕНЫ:
 Скорость: {info['genes']['speed']:.2f}
@@ -231,12 +251,6 @@ class EvolutionGameGUI:
         settings_window.geometry("400x300")
         settings_window.transient(self.root)
         
-        # Максимальная популяция
-        ttk.Label(settings_window, text="Максимальная популяция:").pack(pady=5)
-        max_pop_var = tk.IntVar(value=self.simulation.max_organisms)
-        max_pop_scale = ttk.Scale(settings_window, from_=20, to=200, variable=max_pop_var, orient=tk.HORIZONTAL)
-        max_pop_scale.pack(fill=tk.X, padx=20)
-        
         # Начальная популяция
         ttk.Label(settings_window, text="Начальная популяция:").pack(pady=5)
         initial_pop_var = tk.IntVar(value=self.simulation.initial_organisms)
@@ -255,7 +269,6 @@ class EvolutionGameGUI:
         
         def apply_settings():
             self.simulation.set_parameters(
-                max_organisms=int(max_pop_var.get()),
                 initial_organisms=int(initial_pop_var.get()),
                 food_spawn_rate=float(food_rate_var.get())
             )
@@ -269,6 +282,65 @@ class EvolutionGameGUI:
         ttk.Button(button_frame, text="Применить", command=apply_settings).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="По умолчанию", command=reset_to_defaults).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Отмена", command=settings_window.destroy).pack(side=tk.LEFT, padx=5)
+        
+    def _show_evolution_graphs(self):
+        """Показ графиков эволюции генов"""
+        graph_window = tk.Toplevel(self.root)
+        graph_window.title("Графики эволюции")
+        graph_window.geometry("800x600")
+        graph_window.transient(self.root)
+        
+        # Получаем историю генов
+        gene_history = self.simulation.get_gene_history()
+        
+        if not gene_history['speed']:
+            tk.Label(graph_window, text="Недостаточно данных для построения графиков.\nПодождите некоторое время.").pack(pady=20)
+            return
+            
+        # Создаем текстовое представление графиков
+        info_text = tk.Text(graph_window, width=100, height=35, font=('Courier', 10))
+        info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Заголовок
+        graph_text = "=== ЭВОЛЮЦИОННЫЕ ТРЕНДЫ ===\n\n"
+        
+        # Для каждого гена показываем динамику
+        for gene_name, values in gene_history.items():
+            if not values:
+                continue
+                
+            graph_text += f"{gene_name.upper()}:\n"
+            graph_text += f"Начальное значение: {values[0]:.3f}\n"
+            graph_text += f"Текущее значение: {values[-1]:.3f}\n"
+            graph_text += f"Изменение: {((values[-1] - values[0]) / values[0] * 100):+.1f}%\n"
+            
+            # Простая ASCII визуализация тренда
+            if len(values) > 1:
+                min_val = min(values)
+                max_val = max(values)
+                if max_val > min_val:
+                    graph_text += "Тренд: "
+                    for i, val in enumerate(values[-20:]):  # Последние 20 точек
+                        normalized = int((val - min_val) / (max_val - min_val) * 10)
+                        graph_text += str(normalized)
+                    graph_text += "\n"
+            graph_text += "\n"
+            
+        # Добавляем информацию о лучших организмах
+        best_organisms = self.simulation.get_best_organisms(top_n=10)
+        if best_organisms:
+            graph_text += "=== ТОП-10 САМЫХ ПРИСПОСОБЛЕННЫХ ===\n\n"
+            for i, org in enumerate(best_organisms, 1):
+                graph_text += f"{i:2d}. Приспособленность: {org.fitness:6.1f} | "
+                graph_text += f"Поколение: {org.generation:2d} | "
+                graph_text += f"Энергия: {org.energy:5.1f} | "
+                graph_text += f"Возраст: {org.age:6.1f}\n"
+                graph_text += f"     Скорость: {org.genes['speed']:.2f} | "
+                graph_text += f"Размер: {org.genes['size']:.2f} | "
+                graph_text += f"Эффективность: {org.genes['energy_efficiency']:.2f}\n\n"
+        
+        info_text.insert(1.0, graph_text)
+        info_text.config(state=tk.DISABLED)
         
     def run(self):
         """Запуск игры"""

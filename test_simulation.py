@@ -42,8 +42,8 @@ def test_organism_genetics():
     
     # Создаем родительский организм
     parent = Organism(100, 100)
-    parent.energy = 80  # Достаточно энергии для размножения
-    parent.age = 60    # Достаточный возраст
+    parent.energy = 120  # Достаточно энергии для размножения
+    parent.age = 150   # Достаточный возраст
     
     print("Родительские гены:")
     for gene, value in parent.genes.items():
@@ -72,16 +72,16 @@ def test_evolution_trends():
     print("\n=== Тест эволюционных трендов ===")
     
     sim = EvolutionSimulation(width=600, height=400)
-    sim.set_parameters(max_organisms=50, initial_organisms=15, food_spawn_rate=0.2)
+    sim.set_parameters(initial_organisms=15, food_spawn_rate=0.2)
     
     print("Наблюдение эволюции в условиях скудных ресурсов...")
     
     generations_data = []
     
-    for step in range(100):
+    for step in range(200):
         sim.update(dt=1.0)
         
-        if step % 20 == 0:
+        if step % 40 == 0:
             stats = sim.get_statistics()
             generations_data.append({
                 'step': step,
