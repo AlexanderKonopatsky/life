@@ -209,8 +209,10 @@ class EvolutionSimulation:
         
     def _simple_update(self, dt):
         """Простое обновление без оптимизации"""
+        # Для совместимости добавляем старую логику
         for organism in self.organisms:
-            organism.update(dt, self.width, self.height)
+            # Используем старую логику с полными данными
+            organism._legacy_update(dt, self.width, self.height, self.food_sources, self.organisms)
             
     def _optimized_update(self, dt):
         """Оптимизированное обновление с пространственной сеткой"""

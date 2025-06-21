@@ -62,6 +62,48 @@ class Organism:
         if not self.alive:
             return
             
+        # Используем пространственную сетку для оптимизации
+        if spatial_grid:
+            # Увеличиваем возраст
+            self.age += dt
+            self.last_meal += dt
+            if self.hunt_cooldown > 0:
+                self.hunt_cooldown -= dt
+            
+            # Потребление энергии зависит от типа и активности
+            base_consumption = (self.genes['size'] * 0.015 + self.genes['speed'] * 0.008) * dt
+            
+            # Хищники тратят больше энергии
+            if self.is_predator():
+                base_consumption *= 1.5
+            
+            self.energy -= base_consumption / self.genes['energy_efficiency']
+            
+            # Расчёт приспособленности
+            self.fitness = self.energy * 0.1 + self.age * 0.05 + (200 - self.last_meal) * 0.02
+            
+            # Определяем поведение и цели с оптимизированным поиском
+            self._update_behavior_optimized(spatial_grid)
+            
+            # Движение с учётом поведения
+            self._move(dt, world_width, world_height)
+            
+            # Поиск пищи и охота с оптимизацией
+            self._optimized_interactions(spatial_grid)
+            
+            # Проверка на смерть
+            if self.energy <= 0 or self.age > 2000:
+                self.alive = False
+        else:
+            # Старый неоптимизированный код для совместимости (вызывается из _simple_update)
+            # Базовая логика уже в _legacy_update
+            pass
+            
+    def _legacy_update(self, dt, world_width, world_height, food_sources=None, other_organisms=None):
+        """Старая неоптимизированная логика для совместимости"""
+        if not self.alive:
+            return
+            
         # Увеличиваем возраст
         self.age += dt
         self.last_meal += dt
@@ -80,28 +122,24 @@ class Organism:
         # Расчёт приспособленности
         self.fitness = self.energy * 0.1 + self.age * 0.05 + (200 - self.last_meal) * 0.02
         
-        # Используем пространственную сетку для оптимизации
-        if spatial_grid:
-            # Определяем поведение и цели с оптимизированным поиском
-            self._update_behavior_optimized(spatial_grid)
-            
-            # Движение с учётом поведения
-            self._move(dt, world_width, world_height)
-            
-            # Поиск пищи и охота с оптимизацией
-            self._optimized_interactions(spatial_grid)
-        else:
-            # Старый неоптимизированный код для совместимости
-            self._legacy_update(dt, world_width, world_height)
+        # Поведение (если есть данные)
+        if food_sources is not None and other_organisms is not None:
+            self._update_behavior(other_organisms, food_sources)
         
-        # Проверка на смерть (увеличиваем продолжительность жизни)
+        # Движение
+        self._move(dt, world_width, world_height)
+        
+        # Поиск пищи (если есть источники)
+        if food_sources is not None and (self.is_herbivore() or self.is_omnivore()):
+            self._seek_food(food_sources)
+        
+        # Охота (если есть другие организмы)  
+        if other_organisms is not None and (self.is_predator() or self.is_omnivore()):
+            self._hunt(other_organisms)
+            
+        # Проверка на смерть
         if self.energy <= 0 or self.age > 2000:
             self.alive = False
-            
-    def _legacy_update(self, dt, world_width, world_height):
-        """Старая неоптимизированная логика для совместимости"""
-        # Простое движение без оптимизации
-        self._move(dt, world_width, world_height)
             
     def _update_behavior(self, other_organisms, food_sources):
         """Обновляет поведенческие цели"""
