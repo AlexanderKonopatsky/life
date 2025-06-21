@@ -8,7 +8,7 @@ import math
 class SpatialGrid:
     """Пространственная сетка для быстрого поиска ближайших организмов"""
     
-    def __init__(self, width, height, cell_size=50):
+    def __init__(self, width, height, cell_size=40):  # Уменьшаем размер ячеек для лучшей точности
         self.width = width
         self.height = height
         self.cell_size = cell_size
@@ -17,22 +17,34 @@ class SpatialGrid:
         
         # Создаём сетку ячеек
         self.grid = {}
+        
+        # Кэш для ускорения вычислений
+        self._cell_cache = {}
         self.clear()
         
     def clear(self):
         """Очищает сетку"""
         self.grid = {}
+        self._cell_cache.clear()  # Очищаем кэш
         for row in range(self.rows):
             for col in range(self.cols):
                 self.grid[(row, col)] = []
                 
     def _get_cell(self, x, y):
-        """Получает координаты ячейки для позиции"""
+        """Получает координаты ячейки для позиции с кэшированием"""
+        # Округляем координаты для кэширования
+        cache_key = (int(x), int(y))
+        if cache_key in self._cell_cache:
+            return self._cell_cache[cache_key]
+        
         col = int(x // self.cell_size)
         row = int(y // self.cell_size)
         col = max(0, min(self.cols - 1, col))
         row = max(0, min(self.rows - 1, row))
-        return (row, col)
+        
+        cell = (row, col)
+        self._cell_cache[cache_key] = cell
+        return cell
         
     def add_organism(self, organism):
         """Добавляет организм в сетку"""

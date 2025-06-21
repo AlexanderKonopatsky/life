@@ -224,17 +224,15 @@ class EvolutionSimulation:
         
         population_size = len([org for org in self.organisms if org.alive])
         
-        # Выбираем стратегию обновления в зависимости от размера популяции
-        if (PARALLEL_AVAILABLE and self.parallel_processor and 
-            self.performance_monitor and 
-            self.performance_monitor.should_use_parallel(population_size)):
-            # Многопроцессорное обновление для очень больших популяций
+        # ВСЕГДА используем лучшую доступную оптимизацию
+        if (PARALLEL_AVAILABLE and self.parallel_processor and population_size > 100):
+            # Многопроцессорное обновление для всех популяций > 100
             self._parallel_update(dt)
-        elif self.use_optimization and population_size > 50:
-            # Оптимизированное обновление для больших популяций
+        elif self.use_optimization:
+            # Пространственная оптимизация для всех остальных случаев
             self._optimized_update(dt)
         else:
-            # Простое обновление для малых популяций
+            # Fallback только если оптимизация отключена принудительно
             self._simple_update(dt)
         
         # Обрабатываем размножение
@@ -243,8 +241,9 @@ class EvolutionSimulation:
         # Удаляем мертвых
         self._remove_dead_organisms()
         
-        # Обновляем статистику (реже для оптимизации)
-        if self.time_step % 5 == 0:  # Каждые 5 шагов
+        # Адаптивное обновление статистики в зависимости от популяции
+        update_frequency = max(5, min(20, population_size // 100))  # От 5 до 20 шагов
+        if self.time_step % update_frequency == 0:
             self._update_statistics()
         
         # Если популяция вымерла, перезапускаем
@@ -288,8 +287,8 @@ class EvolutionSimulation:
             return
             
         alive_organisms = [org for org in self.organisms if org.alive]
-        if len(alive_organisms) < 200:
-            # Для малых популяций параллелизм неэффективен
+        if len(alive_organisms) < 50:
+            # Для очень малых популяций используем пространственную оптимизацию
             self._optimized_update(dt)
             return
             

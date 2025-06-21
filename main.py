@@ -154,11 +154,25 @@ class EvolutionGameGUI:
             self.canvas.create_oval(x-size, y-size, x+size, y+size, 
                                   fill=color, outline=outline)
             
-        # Отрисовка организмов
+        # Отрисовка организмов с оптимизацией для больших популяций
         organisms = self.simulation.get_organisms()
-        best_organisms = self.simulation.get_best_organisms(top_n=5)
+        population_size = len(organisms)
         
-        for organism in organisms:
+        # Адаптивная отрисовка: для больших популяций показываем не всех
+        if population_size > 1000:
+            # Показываем каждый 3-й организм для производительности
+            organisms_to_draw = organisms[::3]
+            best_organisms = self.simulation.get_best_organisms(top_n=10)
+        elif population_size > 500:
+            # Показываем каждый 2-й организм
+            organisms_to_draw = organisms[::2]
+            best_organisms = self.simulation.get_best_organisms(top_n=8)
+        else:
+            # Показываем всех
+            organisms_to_draw = organisms
+            best_organisms = self.simulation.get_best_organisms(top_n=5)
+        
+        for organism in organisms_to_draw:
             x, y = organism.x, organism.y
             size = organism.genes['size']
             color = self._rgb_to_hex(*organism.get_color())
@@ -198,8 +212,18 @@ class EvolutionGameGUI:
         # Обновление информации о выбранном организме
         self._update_organism_info()
         
+        # Адаптивная частота обновления GUI в зависимости от популяции
+        if population_size > 2000:
+            gui_update_delay = 100  # 10 FPS для очень больших популяций
+        elif population_size > 1000:
+            gui_update_delay = 80   # 12.5 FPS для больших популяций
+        elif population_size > 500:
+            gui_update_delay = 60   # 16.7 FPS для средних популяций
+        else:
+            gui_update_delay = 50   # 20 FPS для малых популяций
+            
         # Планирование следующего обновления
-        self.root.after(50, self._update_display)  # 20 FPS
+        self.root.after(gui_update_delay, self._update_display)
         
     def _rgb_to_hex(self, r, g, b):
         """Преобразование RGB в hex"""
