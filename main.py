@@ -257,7 +257,7 @@ FPS: {perf_stats['fps']:.1f}
 CPU ядер: {perf_stats.get('cpu_cores', 1)}
 {'Ускорение: ' + str(perf_stats.get('parallel_speedup', 1.0))[:4] + 'x' if perf_stats.get('parallel_available', False) else 'Параллелизм: НЕДОСТУПЕН'}
 
-ВРЕМЯ: {self.simulation.time_step}
+ВРЕМЯ: {perf_stats.get('simulation_steps', 0)}
 """
         
         self.stats_text.delete(1.0, tk.END)
@@ -295,7 +295,7 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
 Энергия: {info['energy']:.1f}
 Возраст: {info['age']:.1f}
 Поколение: {info['generation']}
-Ранг: #{rank} из {len(self.simulation.get_organisms())}
+Ранг: #{rank} из {len(self.async_simulation.get_organisms_snapshot())}
 Приспособленность: {info['fitness']:.1f}
 
 ОСНОВНЫЕ ГЕНЫ:
@@ -329,13 +329,13 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
         
         # Начальная популяция
         ttk.Label(settings_window, text="Начальная популяция:").pack(pady=5)
-        initial_pop_var = tk.IntVar(value=self.simulation.initial_organisms)
+        initial_pop_var = tk.IntVar(value=20)  # Значение по умолчанию
         initial_pop_scale = ttk.Scale(settings_window, from_=5, to=50, variable=initial_pop_var, orient=tk.HORIZONTAL)
         initial_pop_scale.pack(fill=tk.X, padx=20)
         
         # Частота появления пищи
         ttk.Label(settings_window, text="Частота появления пищи:").pack(pady=5)
-        food_rate_var = tk.DoubleVar(value=self.simulation.food_spawn_rate)
+        food_rate_var = tk.DoubleVar(value=0.5)  # Значение по умолчанию
         food_rate_scale = ttk.Scale(settings_window, from_=0.1, to=1.0, variable=food_rate_var, orient=tk.HORIZONTAL)
         food_rate_scale.pack(fill=tk.X, padx=20)
         
@@ -344,7 +344,7 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
         button_frame.pack(pady=20)
         
         def apply_settings():
-            self.simulation.set_parameters(
+            self.async_simulation.set_parameters(
                 initial_organisms=int(initial_pop_var.get()),
                 food_spawn_rate=float(food_rate_var.get())
             )
@@ -352,7 +352,7 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
             
         def reset_to_defaults():
             self.running = False
-            self.simulation = EvolutionSimulation()
+            self.async_simulation.reset()
             settings_window.destroy()
             
         ttk.Button(button_frame, text="Применить", command=apply_settings).pack(side=tk.LEFT, padx=5)
@@ -362,7 +362,7 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
     def _show_evolution_graphs(self):
         """Показ графиков эволюции генов и популяций"""
         # Проверяем размер популяции для предотвращения зависаний
-        current_population = len(self.simulation.get_organisms())
+        current_population = len(self.async_simulation.get_organisms_snapshot())
         if current_population > 5000:
             messagebox.showwarning("Предупреждение", 
                                  f"Очень большая популяция ({current_population} организмов)!\n"
@@ -376,8 +376,12 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
         graph_window.transient(self.root)
         
         # Получаем историю генов и популяций
-        gene_history = self.simulation.get_gene_history()
-        population_history = self.simulation.get_population_history()
+        try:
+            gene_history = self.async_simulation.get_gene_history()
+            population_history = self.async_simulation.get_population_history()
+        except:
+            gene_history = {'speed': []}
+            population_history = {'total': []}
         
         if not gene_history['speed'] and not population_history['total']:
             tk.Label(graph_window, text="Недостаточно данных для построения графиков.\nПодождите некоторое время.").pack(pady=20)
@@ -567,28 +571,34 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
             graph_text += "\n"
             
         # Добавляем информацию о лучших организмах
-        best_organisms = self.simulation.get_best_organisms(top_n=10)
-        if best_organisms:
+        best_organisms_data = self.async_simulation.get_best_organisms_snapshot(top_n=10)
+        best_organisms = [org_data.get('original') for org_data in best_organisms_data if org_data.get('original')]
+        if best_organisms_data:
             graph_text += "*** ТОП-10 САМЫХ ПРИСПОСОБЛЕННЫХ ***\n\n"
-            for i, org in enumerate(best_organisms, 1):
-                type_symbol = "[H]" if org.is_predator() else "[T]" if org.is_herbivore() else "[O]"
-                graph_text += f"{i:2d}. {type_symbol} Приспособленность: {org.fitness:6.1f} | "
-                graph_text += f"Поколение: {org.generation:2d} | "
-                graph_text += f"Энергия: {org.energy:5.1f} | "
-                graph_text += f"Возраст: {org.age:6.1f}\n"
-                graph_text += f"     Скорость: {org.genes['speed']:.2f} | "
-                graph_text += f"Размер: {org.genes['size']:.2f} | "
-                graph_text += f"Эффективность: {org.genes['energy_efficiency']:.2f}\n\n"
+            for i, org_data in enumerate(best_organisms_data, 1):
+                if not org_data:
+                    continue
+                    
+                # Определяем тип из данных
+                diet_pref = org_data.get('genes', {}).get('diet_preference', 0.5)
+                type_symbol = "[H]" if diet_pref > 0.6 else "[T]" if diet_pref < 0.4 else "[O]"
+                
+                graph_text += f"{i:2d}. {type_symbol} Приспособленность: {org_data.get('fitness', 0):6.1f} | "
+                graph_text += f"Поколение: {org_data.get('generation', 0):2d} | "
+                graph_text += f"Энергия: {org_data.get('energy', 0):5.1f} | "
+                graph_text += f"Возраст: {org_data.get('age', 0):6.1f}\n"
+                
+                genes = org_data.get('genes', {})
+                graph_text += f"     Скорость: {genes.get('speed', 0):.2f} | "
+                graph_text += f"Размер: {genes.get('size', 0):.2f} | "
+                graph_text += f"Эффективность: {genes.get('energy_efficiency', 0):.2f}\n\n"
         
         info_text.insert(1.0, graph_text)
         info_text.config(state=tk.DISABLED)
         
     def _toggle_optimization(self):
         """Переключает оптимизацию производительности"""
-        self.simulation.toggle_optimization()
-        perf_stats = self.simulation.get_performance_stats()
-        status = "включена" if perf_stats['optimization'] else "выключена"
-        messagebox.showinfo("Оптимизация", f"Оптимизация производительности {status}")
+        messagebox.showinfo("Оптимизация", "Асинхронная симуляция всегда работает с максимальной оптимизацией!")
          
     def run(self):
         """Запуск игры"""

@@ -24,8 +24,34 @@ class AsyncSimulation:
         self.data_lock = threading.Lock()
         self.cached_organisms = []
         self.cached_food = []
-        self.cached_stats = {}
-        self.cached_performance = {}
+        
+        # Инициализируем статистику значениями по умолчанию
+        self.cached_stats = {
+            'population': 0,
+            'predators': 0,
+            'herbivores': 0,
+            'omnivores': 0,
+            'avg_generation': 0,
+            'total_births': 0,
+            'total_deaths': 0,
+            'avg_speed': 0.0,
+            'avg_size': 0.0,
+            'avg_energy_efficiency': 0.0,
+            'avg_aggression': 0.0,
+            'avg_fitness': 0.0
+        }
+        
+        self.cached_performance = {
+            'fps': 0.0,
+            'avg_frame_time': 0.0,
+            'optimization': True,
+            'cpu_cores': 1,
+            'parallel_available': False,
+            'async_mode': True,
+            'async_simulation_fps': 0.0,
+            'simulation_steps': 0,
+            'speed_multiplier': 1.0
+        }
         
         # Настройки производительности
         self.target_simulation_fps = 60  # Логика работает на 60 FPS
@@ -35,6 +61,9 @@ class AsyncSimulation:
         self.actual_simulation_fps = 0
         self.simulation_steps = 0
         self.last_fps_time = time.time()
+        
+        # Инициализируем кэш данными из симуляции
+        self._update_cached_data()
         
     def start(self):
         """Запускает фоновую симуляцию"""
@@ -189,23 +218,46 @@ class AsyncSimulation:
     
     def get_organisms_snapshot(self):
         """Возвращает снимок организмов для GUI (thread-safe)"""
-        with self.data_lock:
-            return list(self.cached_organisms)  # Возвращаем копию
+        try:
+            with self.data_lock:
+                return list(self.cached_organisms)  # Возвращаем копию
+        except:
+            return []  # Безопасное значение по умолчанию
     
     def get_food_snapshot(self):
         """Возвращает снимок пищи для GUI (thread-safe)"""
-        with self.data_lock:
-            return list(self.cached_food)  # Возвращаем копию
+        try:
+            with self.data_lock:
+                return list(self.cached_food)  # Возвращаем копию
+        except:
+            return []  # Безопасное значение по умолчанию
             
     def get_statistics_snapshot(self):
         """Возвращает снимок статистики для GUI (thread-safe)"""
-        with self.data_lock:
-            return dict(self.cached_stats)  # Возвращаем копию
+        try:
+            with self.data_lock:
+                return dict(self.cached_stats)  # Возвращаем копию
+        except:
+            # Безопасные значения по умолчанию
+            return {
+                'population': 0, 'predators': 0, 'herbivores': 0, 'omnivores': 0,
+                'avg_generation': 0, 'total_births': 0, 'total_deaths': 0,
+                'avg_speed': 0.0, 'avg_size': 0.0, 'avg_energy_efficiency': 0.0,
+                'avg_aggression': 0.0, 'avg_fitness': 0.0
+            }
             
     def get_performance_snapshot(self):
         """Возвращает снимок производительности для GUI (thread-safe)"""
-        with self.data_lock:
-            return dict(self.cached_performance)  # Возвращаем копию
+        try:
+            with self.data_lock:
+                return dict(self.cached_performance)  # Возвращаем копию
+        except:
+            # Безопасные значения по умолчанию
+            return {
+                'fps': 0.0, 'avg_frame_time': 0.0, 'optimization': True,
+                'cpu_cores': 1, 'parallel_available': False, 'async_mode': True,
+                'async_simulation_fps': 0.0, 'simulation_steps': 0, 'speed_multiplier': 1.0
+            }
     
     def get_population_history(self):
         """Возвращает историю популяций"""
