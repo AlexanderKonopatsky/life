@@ -224,12 +224,13 @@ class EvolutionSimulation:
         
         population_size = len([org for org in self.organisms if org.alive])
         
-        # ВСЕГДА используем лучшую доступную оптимизацию
-        if (PARALLEL_AVAILABLE and self.parallel_processor and population_size > 50):
-            # Многопроцессорное обновление для популяций > 50 (более агрессивно)
+        # ИСПРАВЛЕНО: более интеллектуальный выбор оптимизации
+        if (PARALLEL_AVAILABLE and self.parallel_processor and population_size > 150):
+            # Многопроцессорность только для действительно больших популяций (>150)
+            # При 50-150 организмах overhead многопроцессорности может быть больше выгоды
             self._parallel_update(dt)
         elif self.use_optimization:
-            # Пространственная оптимизация для всех остальных случаев
+            # Пространственная оптимизация для средних и малых популяций
             self._optimized_update(dt)
         else:
             # Fallback только если оптимизация отключена принудительно

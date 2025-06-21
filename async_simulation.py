@@ -127,16 +127,18 @@ class AsyncSimulation:
             current_time = time.time()
             
             if self.is_running:
-                # Рассчитываем dt с учетом скорости
-                dt = (current_time - last_update) * self.speed_multiplier
+                # ИСПРАВЛЕНО: используем фиксированный dt для стабильности
+                # dt должно быть постоянным для предсказуемой физики
+                base_dt = frame_time  # 1/60 = 0.0167 секунд
+                dt = base_dt * self.speed_multiplier
                 
                 try:
                     # Обновляем симуляцию
                     self.simulation.update(dt)
                     
-                    # Обновляем кэшированные данные для GUI
-                    if self.simulation_steps % 3 == 0:  # Обновляем кэш каждые 3 шага
-                        self._update_cached_data()
+                    # ИСПРАВЛЕНО: обновляем кэш реже для лучшей производительности
+                    if self.simulation_steps % 5 == 0:  # Каждые 5 шагов - компромисс между частотой и производительностью
+                        self._update_cached_data_fast()
                     
                     self.simulation_steps += 1
                     
@@ -203,6 +205,57 @@ class AsyncSimulation:
                 
         except Exception as e:
             print(f"⚠️ Ошибка обновления кэша: {e}")
+            
+    def _update_cached_data_fast(self):
+        """Быстрое обновление кэшированных данных - только критически важные поля"""
+        try:
+            # Используем trylock чтобы не блокировать симуляцию
+            if self.data_lock.acquire(blocking=False):
+                try:
+                    # Кэшируем только основные данные для отрисовки
+                    organisms = self.simulation.get_organisms()
+                    self.cached_organisms = [
+                        {
+                            'x': org.x, 'y': org.y, 
+                            'size': org.genes['size'],
+                            'color': org.get_color(),
+                            'energy': org.energy,
+                            'original': org  # Минимум данных для быстроты
+                        }
+                        for org in organisms if org.alive
+                    ]
+                    
+                    # Кэшируем пищу (быстро)
+                    food_sources = self.simulation.get_food_sources()
+                    self.cached_food = [
+                        {
+                            'x': food['x'], 'y': food['y'],
+                            'size': food['size'], 'type': food.get('type', 'grass')
+                        }
+                        for food in food_sources if not food.get('consumed', False)
+                    ]
+                    
+                    # Обновляем только основную статистику
+                    stats = self.simulation.get_statistics()
+                    self.cached_stats.update({
+                        'population': stats.get('population', 0),
+                        'predators': stats.get('predators', 0),
+                        'herbivores': stats.get('herbivores', 0),
+                        'omnivores': stats.get('omnivores', 0)
+                    })
+                    
+                    # Обновляем производительность
+                    self.cached_performance.update({
+                        'async_simulation_fps': self.actual_simulation_fps,
+                        'simulation_steps': self.simulation_steps,
+                        'speed_multiplier': self.speed_multiplier
+                    })
+                    
+                finally:
+                    self.data_lock.release()
+                    
+        except Exception as e:
+            print(f"⚠️ Ошибка быстрого обновления кэша: {e}")
             
     def _update_simulation_fps(self):
         """Обновляет статистику FPS симуляции"""

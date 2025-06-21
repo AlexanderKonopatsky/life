@@ -124,10 +124,16 @@ class EvolutionGameGUI:
         # Очистка канваса
         self.canvas.delete("all")
         
-        # Получаем снимки данных из асинхронной симуляции
-        food_data = self.async_simulation.get_food_snapshot()
-        organisms_data = self.async_simulation.get_organisms_snapshot() 
-        best_organisms_data = self.async_simulation.get_best_organisms_snapshot(top_n=10)
+        # ИСПРАВЛЕНО: Получаем снимки данных без блокировки
+        try:
+            food_data = self.async_simulation.get_food_snapshot()
+            organisms_data = self.async_simulation.get_organisms_snapshot() 
+            best_organisms_data = self.async_simulation.get_best_organisms_snapshot(top_n=10)
+        except:
+            # Если не удалось получить данные, используем пустые списки и продолжаем
+            food_data = []
+            organisms_data = []
+            best_organisms_data = []
         
         # Отрисовка пищи
         for food in food_data:
@@ -148,20 +154,23 @@ class EvolutionGameGUI:
             self.canvas.create_oval(x-size, y-size, x+size, y+size, 
                                   fill=color, outline=outline)
         
-        # Адаптивная отрисовка организмов для больших популяций
+        # ИСПРАВЛЕНО: Более агрессивная адаптивная отрисовка для решения лагов
         population_size = len(organisms_data)
         
-        if population_size > 2000:
+        if population_size > 1000:
+            # Показываем каждый 5-й организм при очень больших популяциях
+            organisms_to_draw = organisms_data[::5]
+        elif population_size > 500:
             # Показываем каждый 4-й организм
             organisms_to_draw = organisms_data[::4]
-        elif population_size > 1000:
-            # Показываем каждый 3-й организм
+        elif population_size > 250:
+            # Показываем каждый 3-й организм начиная с 250 (вместо 500)
             organisms_to_draw = organisms_data[::3]
-        elif population_size > 500:
-            # Показываем каждый 2-й организм
+        elif population_size > 150:
+            # Показываем каждый 2-й организм начиная с 150 (вместо 500)
             organisms_to_draw = organisms_data[::2]
         else:
-            # Показываем всех
+            # Показываем всех только для малых популяций
             organisms_to_draw = organisms_data
         
         # Создаем множество лучших организмов для быстрой проверки
@@ -202,11 +211,16 @@ class EvolutionGameGUI:
             self.canvas.create_rectangle(bar_x, bar_y, bar_x + bar_width * energy_ratio, bar_y + bar_height,
                                        fill='red', outline='')
         
-        # Обновление статистики
-        self._update_statistics()
+        # ИСПРАВЛЕНО: Обновляем статистику реже при больших популяциях
+        if not hasattr(self, '_stats_counter'):
+            self._stats_counter = 0
         
-        # Обновление информации о выбранном организме
-        self._update_organism_info()
+        self._stats_counter += 1
+        stats_update_frequency = 3 if population_size > 200 else 1  # Реже обновляем при больших популяциях
+        
+        if self._stats_counter % stats_update_frequency == 0:
+            self._update_statistics()
+            self._update_organism_info()
         
         # 🎯 ФИКСИРОВАННАЯ ЧАСТОТА GUI: всегда 30 FPS независимо от популяции!
         self.root.after(self.gui_update_interval, self._update_display)
