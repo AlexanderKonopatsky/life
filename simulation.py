@@ -121,17 +121,36 @@ class EvolutionSimulation:
     def _handle_reproduction(self):
         """Обрабатывает размножение организмов"""
         new_organisms = []
+        current_population = len([org for org in self.organisms if org.alive])
+        
+        # Ограничения на размножение для предотвращения экспоненциального роста
+        max_population = 2000  # Максимальная безопасная популяция
+        reproduction_chance = 1.0
+        
+        # Снижаем шанс размножения при росте популяции
+        if current_population > 500:
+            reproduction_chance = max(0.1, 1.0 - (current_population - 500) / 1500)
+        
+        # Полностью блокируем размножение при критической популяции
+        if current_population >= max_population:
+            return
+        
+        # Ограничение новых рождений за один кадр
+        max_births_per_frame = min(20, max(1, current_population // 50))
+        births_this_frame = 0
         
         for organism in self.organisms:
-            if organism.alive and organism.can_reproduce():
-                # Размножение без ограничений (естественный отбор сам регулирует)
-                child = organism.reproduce()
-                if child:
-                    # Проверяем границы для потомка
-                    child.x = max(10, min(self.width - 10, child.x))
-                    child.y = max(10, min(self.height - 10, child.y))
-                    new_organisms.append(child)
-                    self.stats['total_births'] += 1
+            if organism.alive and organism.can_reproduce() and births_this_frame < max_births_per_frame:
+                # Проверяем шанс размножения
+                if random.random() < reproduction_chance:
+                    child = organism.reproduce()
+                    if child:
+                        # Проверяем границы для потомка
+                        child.x = max(10, min(self.width - 10, child.x))
+                        child.y = max(10, min(self.height - 10, child.y))
+                        new_organisms.append(child)
+                        self.stats['total_births'] += 1
+                        births_this_frame += 1
                         
         self.organisms.extend(new_organisms)
         

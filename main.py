@@ -215,9 +215,9 @@ class EvolutionGameGUI:
         stats_text = f"""ЭКОСИСТЕМА
 
 Всего организмов: {stats['population']}
-🔴 Хищники: {stats['predators']}
-🟢 Травоядные: {stats['herbivores']}
-🔵 Всеядные: {stats['omnivores']}
+[H] Хищники: {stats['predators']}
+[T] Травоядные: {stats['herbivores']}
+[O] Всеядные: {stats['omnivores']}
 
 ЭВОЛЮЦИЯ:
 Поколение: {stats['avg_generation']:.1f}
@@ -252,10 +252,10 @@ FPS: {perf_stats['fps']:.1f}
             best_organisms = self.simulation.get_best_organisms(top_n=len(self.simulation.get_organisms()))
             rank = best_organisms.index(org) + 1 if org in best_organisms else "?"
             
-            # Определяем эмодзи для типа
-            type_emoji = "🔴" if org.is_predator() else "🟢" if org.is_herbivore() else "🔵"
+            # Определяем символ для типа
+            type_symbol = "[H]" if org.is_predator() else "[T]" if org.is_herbivore() else "[O]"
             
-            info_text = f"""{type_emoji} {org.get_type_name().upper()}
+            info_text = f"""{type_symbol} {org.get_type_name().upper()}
 
 Позиция: ({info['position'][0]:.1f}, {info['position'][1]:.1f})
 Энергия: {info['energy']:.1f}
@@ -327,6 +327,15 @@ FPS: {perf_stats['fps']:.1f}
         
     def _show_evolution_graphs(self):
         """Показ графиков эволюции генов и популяций"""
+        # Проверяем размер популяции для предотвращения зависаний
+        current_population = len(self.simulation.get_organisms())
+        if current_population > 3000:
+            messagebox.showwarning("Предупреждение", 
+                                 f"Слишком большая популяция ({current_population} организмов)!\n"
+                                 f"Отображение графиков может вызвать зависание.\n"
+                                 f"Подождите пока популяция уменьшится до безопасного уровня (<3000).")
+            return
+        
         graph_window = tk.Toplevel(self.root)
         graph_window.title("Графики эволюции и динамика популяций")
         graph_window.geometry("1400x800")
@@ -347,18 +356,18 @@ FPS: {perf_stats['fps']:.1f}
         # Вкладка 1: Динамика популяций
         if MATPLOTLIB_AVAILABLE and population_history['total']:
             pop_frame = ttk.Frame(notebook)
-            notebook.add(pop_frame, text="📊 Динамика популяций")
+            notebook.add(pop_frame, text="Динамика популяций")
             self._create_population_graphs(pop_frame, population_history)
         
         # Вкладка 2: Эволюция генов
         if MATPLOTLIB_AVAILABLE and gene_history['speed']:
             genes_frame = ttk.Frame(notebook)
-            notebook.add(genes_frame, text="🧬 Эволюция генов")
+            notebook.add(genes_frame, text="Эволюция генов")
             self._create_gene_graphs(genes_frame, gene_history)
         
         # Вкладка 3: Статистика (текстовая)
         stats_frame = ttk.Frame(notebook)
-        notebook.add(stats_frame, text="📈 Подробная статистика")
+        notebook.add(stats_frame, text="Подробная статистика")
         self._create_text_stats(stats_frame, gene_history, population_history)
         
     def _create_population_graphs(self, parent, population_history):
@@ -384,9 +393,9 @@ FPS: {perf_stats['fps']:.1f}
         total = population_history['total']
         
         # График 1: Абсолютные числа
-        ax1.plot(time_steps, predators, 'r-', label='🔴 Хищники', linewidth=2, marker='o', markersize=3)
-        ax1.plot(time_steps, herbivores, 'g-', label='🟢 Травоядные', linewidth=2, marker='s', markersize=3)
-        ax1.plot(time_steps, omnivores, 'b-', label='🔵 Всеядные', linewidth=2, marker='^', markersize=3)
+        ax1.plot(time_steps, predators, 'r-', label='[H] Хищники', linewidth=2, marker='o', markersize=3)
+        ax1.plot(time_steps, herbivores, 'g-', label='[T] Травоядные', linewidth=2, marker='s', markersize=3)
+        ax1.plot(time_steps, omnivores, 'b-', label='[O] Всеядные', linewidth=2, marker='^', markersize=3)
         ax1.plot(time_steps, total, 'white', linestyle='--', label='Общая популяция', linewidth=2, alpha=0.8)
         
         ax1.set_title('Абсолютная численность популяций', color='white')
@@ -404,13 +413,13 @@ FPS: {perf_stats['fps']:.1f}
             omni_percent = [o/t*100 if t > 0 else 0 for o, t in zip(omnivores, total)]
             
             # Стекированная диаграмма
-            ax2.fill_between(time_steps, 0, pred_percent, color='red', alpha=0.7, label='🔴 Хищники')
+            ax2.fill_between(time_steps, 0, pred_percent, color='red', alpha=0.7, label='[H] Хищники')
             ax2.fill_between(time_steps, pred_percent, 
                            [p+h for p,h in zip(pred_percent, herb_percent)], 
-                           color='green', alpha=0.7, label='🟢 Травоядные')
+                           color='green', alpha=0.7, label='[T] Травоядные')
             ax2.fill_between(time_steps, [p+h for p,h in zip(pred_percent, herb_percent)],
                            [p+h+o for p,h,o in zip(pred_percent, herb_percent, omni_percent)],
-                           color='blue', alpha=0.7, label='🔵 Всеядные')
+                           color='blue', alpha=0.7, label='[O] Всеядные')
         
         ax2.set_title('Процентное соотношение типов организмов', color='white')
         ax2.set_xlabel('Время (шаги симуляции)', color='white')
@@ -495,12 +504,12 @@ FPS: {perf_stats['fps']:.1f}
                 current_omni = population_history['omnivores'][-1] if population_history['omnivores'] else 0
                 total_current = population_history['total'][-1] if population_history['total'] else 1
                 
-                graph_text += f"🔴 Хищники: {current_pred} ({current_pred/total_current*100:.1f}%)\n"
-                graph_text += f"🟢 Травоядные: {current_herb} ({current_herb/total_current*100:.1f}%)\n" 
-                graph_text += f"🔵 Всеядные: {current_omni} ({current_omni/total_current*100:.1f}%)\n\n"
+                graph_text += f"[H] Хищники: {current_pred} ({current_pred/total_current*100:.1f}%)\n"
+                graph_text += f"[T] Травоядные: {current_herb} ({current_herb/total_current*100:.1f}%)\n" 
+                graph_text += f"[O] Всеядные: {current_omni} ({current_omni/total_current*100:.1f}%)\n\n"
         
         # Статистика генов
-        graph_text += "🧬 ЭВОЛЮЦИОННЫЕ ТРЕНДЫ:\n\n"
+        graph_text += "*** ЭВОЛЮЦИОННЫЕ ТРЕНДЫ ***\n\n"
         for gene_name, values in gene_history.items():
             if not values:
                 continue
@@ -526,10 +535,10 @@ FPS: {perf_stats['fps']:.1f}
         # Добавляем информацию о лучших организмах
         best_organisms = self.simulation.get_best_organisms(top_n=10)
         if best_organisms:
-            graph_text += "🏆 ТОП-10 САМЫХ ПРИСПОСОБЛЕННЫХ:\n\n"
+            graph_text += "*** ТОП-10 САМЫХ ПРИСПОСОБЛЕННЫХ ***\n\n"
             for i, org in enumerate(best_organisms, 1):
-                type_emoji = "🔴" if org.is_predator() else "🟢" if org.is_herbivore() else "🔵"
-                graph_text += f"{i:2d}. {type_emoji} Приспособленность: {org.fitness:6.1f} | "
+                type_symbol = "[H]" if org.is_predator() else "[T]" if org.is_herbivore() else "[O]"
+                graph_text += f"{i:2d}. {type_symbol} Приспособленность: {org.fitness:6.1f} | "
                 graph_text += f"Поколение: {org.generation:2d} | "
                 graph_text += f"Энергия: {org.energy:5.1f} | "
                 graph_text += f"Возраст: {org.age:6.1f}\n"
