@@ -49,6 +49,15 @@ class EvolutionSimulation:
             'fitness': []
         }
         
+        # История популяций по типам для графиков
+        self.population_history = {
+            'predators': [],
+            'herbivores': [],
+            'omnivores': [],
+            'total': [],
+            'time_steps': []
+        }
+        
         # Пространственная индексация для оптимизации
         self.spatial_grid = SpatialGrid(self.width, self.height, cell_size=80)
         self.use_optimization = True  # Флаг для включения оптимизации
@@ -160,12 +169,20 @@ class EvolutionSimulation:
         
         # Сохраняем историю для графиков (каждые 10 шагов)
         if self.time_step % 10 == 0:
+            # История генов
             self.gene_history['speed'].append(self.stats['avg_speed'])
             self.gene_history['size'].append(self.stats['avg_size'])
             self.gene_history['energy_efficiency'].append(self.stats['avg_energy_efficiency'])
             self.gene_history['aggression'].append(self.stats['avg_aggression'])
             self.gene_history['mutation_rate'].append(self.stats['avg_mutation_rate'])
             self.gene_history['fitness'].append(self.stats['avg_fitness'])
+            
+            # История популяций по типам
+            self.population_history['predators'].append(self.stats['predators'])
+            self.population_history['herbivores'].append(self.stats['herbivores'])
+            self.population_history['omnivores'].append(self.stats['omnivores'])
+            self.population_history['total'].append(self.stats['population'])
+            self.population_history['time_steps'].append(self.time_step)
         
         # Определяем новое поколение
         max_generation = max(org.generation for org in alive_organisms)
@@ -257,6 +274,10 @@ class EvolutionSimulation:
         # Очищаем историю генов
         for key in self.gene_history:
             self.gene_history[key] = []
+            
+        # Очищаем историю популяций
+        for key in self.population_history:
+            self.population_history[key] = []
         self._spawn_initial_organisms()
         
     def set_parameters(self, initial_organisms=None, food_spawn_rate=None):
@@ -311,6 +332,10 @@ class EvolutionSimulation:
     def get_gene_history(self):
         """Возвращает историю изменений генов"""
         return self.gene_history.copy()
+        
+    def get_population_history(self):
+        """Возвращает историю популяций по типам"""
+        return self.population_history.copy()
         
     def get_best_organisms(self, top_n=5):
         """Возвращает самых приспособленных организмов"""

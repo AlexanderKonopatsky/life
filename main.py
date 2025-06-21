@@ -5,6 +5,15 @@ import time
 import math
 from simulation import EvolutionSimulation
 
+# Опциональный импорт matplotlib для графиков
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    import matplotlib.style as style
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+
 class EvolutionGameGUI:
     """Графический интерфейс для игры 'Эволюция: Простая жизнь'"""
     
@@ -317,27 +326,181 @@ FPS: {perf_stats['fps']:.1f}
         ttk.Button(button_frame, text="Отмена", command=settings_window.destroy).pack(side=tk.LEFT, padx=5)
         
     def _show_evolution_graphs(self):
-        """Показ графиков эволюции генов"""
+        """Показ графиков эволюции генов и популяций"""
         graph_window = tk.Toplevel(self.root)
-        graph_window.title("Графики эволюции")
-        graph_window.geometry("800x600")
+        graph_window.title("Графики эволюции и динамика популяций")
+        graph_window.geometry("1400x800")
         graph_window.transient(self.root)
         
-        # Получаем историю генов
+        # Получаем историю генов и популяций
         gene_history = self.simulation.get_gene_history()
+        population_history = self.simulation.get_population_history()
         
-        if not gene_history['speed']:
+        if not gene_history['speed'] and not population_history['total']:
             tk.Label(graph_window, text="Недостаточно данных для построения графиков.\nПодождите некоторое время.").pack(pady=20)
             return
+
+        # Создаем ноутбук для вкладок
+        notebook = ttk.Notebook(graph_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Вкладка 1: Динамика популяций
+        if MATPLOTLIB_AVAILABLE and population_history['total']:
+            pop_frame = ttk.Frame(notebook)
+            notebook.add(pop_frame, text="📊 Динамика популяций")
+            self._create_population_graphs(pop_frame, population_history)
+        
+        # Вкладка 2: Эволюция генов
+        if MATPLOTLIB_AVAILABLE and gene_history['speed']:
+            genes_frame = ttk.Frame(notebook)
+            notebook.add(genes_frame, text="🧬 Эволюция генов")
+            self._create_gene_graphs(genes_frame, gene_history)
+        
+        # Вкладка 3: Статистика (текстовая)
+        stats_frame = ttk.Frame(notebook)
+        notebook.add(stats_frame, text="📈 Подробная статистика")
+        self._create_text_stats(stats_frame, gene_history, population_history)
+        
+    def _create_population_graphs(self, parent, population_history):
+        """Создает графики динамики популяций"""
+        if not MATPLOTLIB_AVAILABLE:
+            tk.Label(parent, text="Matplotlib не доступен").pack()
+            return
             
-        # Создаем текстовое представление графиков
-        info_text = tk.Text(graph_window, width=100, height=35, font=('Courier', 10))
+        # Настройка стиля
+        style.use('dark_background')
+        plt.rcParams['figure.facecolor'] = '#2e2e2e'
+        plt.rcParams['axes.facecolor'] = '#3e3e3e'
+        
+        # Создаем фигуру с субплотами
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        fig.suptitle('Динамика популяций по типам организмов', fontsize=16, color='white')
+        
+        # Данные для графиков
+        time_steps = population_history['time_steps']
+        predators = population_history['predators']
+        herbivores = population_history['herbivores']
+        omnivores = population_history['omnivores']
+        total = population_history['total']
+        
+        # График 1: Абсолютные числа
+        ax1.plot(time_steps, predators, 'r-', label='🔴 Хищники', linewidth=2, marker='o', markersize=3)
+        ax1.plot(time_steps, herbivores, 'g-', label='🟢 Травоядные', linewidth=2, marker='s', markersize=3)
+        ax1.plot(time_steps, omnivores, 'b-', label='🔵 Всеядные', linewidth=2, marker='^', markersize=3)
+        ax1.plot(time_steps, total, 'white', linestyle='--', label='Общая популяция', linewidth=2, alpha=0.8)
+        
+        ax1.set_title('Абсолютная численность популяций', color='white')
+        ax1.set_xlabel('Время (шаги симуляции)', color='white')
+        ax1.set_ylabel('Количество организмов', color='white')
+        ax1.legend(loc='upper left')
+        ax1.grid(True, alpha=0.3)
+        ax1.tick_params(colors='white')
+        
+        # График 2: Процентное соотношение (заполненная область)
+        if total and max(total) > 0:
+            # Вычисляем проценты
+            pred_percent = [p/t*100 if t > 0 else 0 for p, t in zip(predators, total)]
+            herb_percent = [h/t*100 if t > 0 else 0 for h, t in zip(herbivores, total)]
+            omni_percent = [o/t*100 if t > 0 else 0 for o, t in zip(omnivores, total)]
+            
+            # Стекированная диаграмма
+            ax2.fill_between(time_steps, 0, pred_percent, color='red', alpha=0.7, label='🔴 Хищники')
+            ax2.fill_between(time_steps, pred_percent, 
+                           [p+h for p,h in zip(pred_percent, herb_percent)], 
+                           color='green', alpha=0.7, label='🟢 Травоядные')
+            ax2.fill_between(time_steps, [p+h for p,h in zip(pred_percent, herb_percent)],
+                           [p+h+o for p,h,o in zip(pred_percent, herb_percent, omni_percent)],
+                           color='blue', alpha=0.7, label='🔵 Всеядные')
+        
+        ax2.set_title('Процентное соотношение типов организмов', color='white')
+        ax2.set_xlabel('Время (шаги симуляции)', color='white')
+        ax2.set_ylabel('Процент от общей популяции (%)', color='white')
+        ax2.set_ylim(0, 100)
+        ax2.legend(loc='upper right')
+        ax2.grid(True, alpha=0.3)
+        ax2.tick_params(colors='white')
+        
+        plt.tight_layout()
+        
+        # Интеграция с tkinter
+        canvas = FigureCanvasTkAgg(fig, parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+    def _create_gene_graphs(self, parent, gene_history):
+        """Создает графики эволюции генов"""
+        if not MATPLOTLIB_AVAILABLE:
+            tk.Label(parent, text="Matplotlib не доступен").pack()
+            return
+            
+        # Создаем фигуру с субплотами для основных генов
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        fig.suptitle('Эволюция основных генов', fontsize=16, color='white')
+        
+        # Основные гены для отображения
+        genes_to_plot = ['speed', 'size', 'energy_efficiency', 'fitness']
+        gene_colors = ['cyan', 'orange', 'lime', 'yellow']
+        gene_titles = ['Скорость', 'Размер', 'Эффективность энергии', 'Приспособленность']
+        
+        # Создаем временную шкалу
+        if gene_history['speed']:
+            time_points = range(0, len(gene_history['speed']) * 10, 10)
+            
+            for i, (gene, color, title) in enumerate(zip(genes_to_plot, gene_colors, gene_titles)):
+                ax = axes[i // 2, i % 2]
+                values = gene_history.get(gene, [])
+                
+                if values:
+                    ax.plot(time_points, values, color=color, linewidth=2, marker='o', markersize=3)
+                    ax.set_title(f'{title}', color='white')
+                    ax.set_xlabel('Время (шаги)', color='white')
+                    ax.set_ylabel('Значение', color='white')
+                    ax.grid(True, alpha=0.3)
+                    ax.tick_params(colors='white')
+                    
+                    # Показываем тренд
+                    if len(values) > 1:
+                        start_val = values[0]
+                        end_val = values[-1]
+                        change_percent = ((end_val - start_val) / start_val * 100) if start_val != 0 else 0
+                        trend_text = f'Изменение: {change_percent:+.1f}%'
+                        ax.text(0.02, 0.98, trend_text, transform=ax.transAxes, 
+                               verticalalignment='top', color='white', 
+                               bbox=dict(boxstyle='round', facecolor='black', alpha=0.7))
+        
+        plt.tight_layout()
+        
+        # Интеграция с tkinter
+        canvas = FigureCanvasTkAgg(fig, parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+    def _create_text_stats(self, parent, gene_history, population_history):
+        """Создает текстовую статистику"""
+        info_text = tk.Text(parent, width=100, height=35, font=('Courier', 10))
         info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Заголовок
-        graph_text = "=== ЭВОЛЮЦИОННЫЕ ТРЕНДЫ ===\n\n"
+        graph_text = "=== ПОДРОБНАЯ СТАТИСТИКА ЭВОЛЮЦИИ ===\n\n"
         
-        # Для каждого гена показываем динамику
+        # Статистика популяций
+        if population_history['total']:
+            graph_text += "📊 ДИНАМИКА ПОПУЛЯЦИЙ:\n"
+            graph_text += f"Начальная популяция: {population_history['total'][0] if population_history['total'] else 0}\n"
+            graph_text += f"Текущая популяция: {population_history['total'][-1] if population_history['total'] else 0}\n"
+            
+            if population_history['total']:
+                current_pred = population_history['predators'][-1] if population_history['predators'] else 0
+                current_herb = population_history['herbivores'][-1] if population_history['herbivores'] else 0
+                current_omni = population_history['omnivores'][-1] if population_history['omnivores'] else 0
+                total_current = population_history['total'][-1] if population_history['total'] else 1
+                
+                graph_text += f"🔴 Хищники: {current_pred} ({current_pred/total_current*100:.1f}%)\n"
+                graph_text += f"🟢 Травоядные: {current_herb} ({current_herb/total_current*100:.1f}%)\n" 
+                graph_text += f"🔵 Всеядные: {current_omni} ({current_omni/total_current*100:.1f}%)\n\n"
+        
+        # Статистика генов
+        graph_text += "🧬 ЭВОЛЮЦИОННЫЕ ТРЕНДЫ:\n\n"
         for gene_name, values in gene_history.items():
             if not values:
                 continue
@@ -345,7 +508,8 @@ FPS: {perf_stats['fps']:.1f}
             graph_text += f"{gene_name.upper()}:\n"
             graph_text += f"Начальное значение: {values[0]:.3f}\n"
             graph_text += f"Текущее значение: {values[-1]:.3f}\n"
-            graph_text += f"Изменение: {((values[-1] - values[0]) / values[0] * 100):+.1f}%\n"
+            if values[0] != 0:
+                graph_text += f"Изменение: {((values[-1] - values[0]) / values[0] * 100):+.1f}%\n"
             
             # Простая ASCII визуализация тренда
             if len(values) > 1:
@@ -362,9 +526,10 @@ FPS: {perf_stats['fps']:.1f}
         # Добавляем информацию о лучших организмах
         best_organisms = self.simulation.get_best_organisms(top_n=10)
         if best_organisms:
-            graph_text += "=== ТОП-10 САМЫХ ПРИСПОСОБЛЕННЫХ ===\n\n"
+            graph_text += "🏆 ТОП-10 САМЫХ ПРИСПОСОБЛЕННЫХ:\n\n"
             for i, org in enumerate(best_organisms, 1):
-                graph_text += f"{i:2d}. Приспособленность: {org.fitness:6.1f} | "
+                type_emoji = "🔴" if org.is_predator() else "🟢" if org.is_herbivore() else "🔵"
+                graph_text += f"{i:2d}. {type_emoji} Приспособленность: {org.fitness:6.1f} | "
                 graph_text += f"Поколение: {org.generation:2d} | "
                 graph_text += f"Энергия: {org.energy:5.1f} | "
                 graph_text += f"Возраст: {org.age:6.1f}\n"
@@ -372,7 +537,7 @@ FPS: {perf_stats['fps']:.1f}
                 graph_text += f"Размер: {org.genes['size']:.2f} | "
                 graph_text += f"Эффективность: {org.genes['energy_efficiency']:.2f}\n\n"
         
-                info_text.insert(1.0, graph_text)
+        info_text.insert(1.0, graph_text)
         info_text.config(state=tk.DISABLED)
         
     def _toggle_optimization(self):
