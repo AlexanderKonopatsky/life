@@ -329,11 +329,11 @@ FPS: {perf_stats['fps']:.1f}
         """Показ графиков эволюции генов и популяций"""
         # Проверяем размер популяции для предотвращения зависаний
         current_population = len(self.simulation.get_organisms())
-        if current_population > 3000:
+        if current_population > 5000:
             messagebox.showwarning("Предупреждение", 
-                                 f"Слишком большая популяция ({current_population} организмов)!\n"
+                                 f"Очень большая популяция ({current_population} организмов)!\n"
                                  f"Отображение графиков может вызвать зависание.\n"
-                                 f"Подождите пока популяция уменьшится до безопасного уровня (<3000).")
+                                 f"Подождите пока популяция уменьшится до безопасного уровня (<5000).")
             return
         
         graph_window = tk.Toplevel(self.root)

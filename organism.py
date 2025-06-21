@@ -414,15 +414,15 @@ class Organism:
                       
     def can_reproduce(self):
         """Проверяет, может ли организм размножаться"""
-        return self.energy > self.genes['reproduction_threshold'] and self.age > 200
+        return self.energy > self.genes['reproduction_threshold'] and self.age > 150
         
     def reproduce(self):
         """Создает потомка с мутированными генами"""
         if not self.can_reproduce():
             return None
             
-        # Тратим энергию на размножение (увеличиваем затраты для баланса)
-        self.energy -= self.genes['reproduction_threshold'] * 0.6
+        # Тратим энергию на размножение (умеренные затраты для естественного отбора)
+        self.energy -= self.genes['reproduction_threshold'] * 0.4
         
         # Создаем мутированные гены
         new_genes = {}
