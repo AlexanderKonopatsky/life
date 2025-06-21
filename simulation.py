@@ -1,6 +1,7 @@
 import random
 import time
 from organism import Organism
+from spatial_grid import SpatialGrid
 
 class EvolutionSimulation:
     """Основной класс симуляции эволюции"""
@@ -47,6 +48,14 @@ class EvolutionSimulation:
             'mutation_rate': [],
             'fitness': []
         }
+        
+        # Пространственная индексация для оптимизации
+        self.spatial_grid = SpatialGrid(self.width, self.height, cell_size=80)
+        self.use_optimization = True  # Флаг для включения оптимизации
+        
+        # Счётчики для профилирования
+        self.frame_count = 0
+        self.update_time_sum = 0
         
         # Инициализация
         self._spawn_initial_organisms()
@@ -165,27 +174,62 @@ class EvolutionSimulation:
             
     def update(self, dt=1.0):
         """Обновляет состояние симуляции на один шаг"""
+        import time
+        start_time = time.time()
+        
         self.time_step += 1
+        self.frame_count += 1
         
         # Создаем пищу
         self._spawn_food()
         
-        # Обновляем всех организмов
-        for organism in self.organisms:
-            organism.update(dt, self.width, self.height, self.food_sources, self.organisms)
-            
+        if self.use_optimization and len(self.organisms) > 50:
+            # Оптимизированное обновление для больших популяций
+            self._optimized_update(dt)
+        else:
+            # Простое обновление для малых популяций
+            self._simple_update(dt)
+        
         # Обрабатываем размножение
         self._handle_reproduction()
         
         # Удаляем мертвых
         self._remove_dead_organisms()
         
-        # Обновляем статистику
-        self._update_statistics()
+        # Обновляем статистику (реже для оптимизации)
+        if self.time_step % 5 == 0:  # Каждые 5 шагов
+            self._update_statistics()
         
         # Если популяция вымерла, перезапускаем
         if len(self.organisms) == 0:
             self._spawn_initial_organisms()
+            
+        # Профилирование
+        self.update_time_sum += time.time() - start_time
+        
+    def _simple_update(self, dt):
+        """Простое обновление без оптимизации"""
+        for organism in self.organisms:
+            organism.update(dt, self.width, self.height)
+            
+    def _optimized_update(self, dt):
+        """Оптимизированное обновление с пространственной сеткой"""
+        # Очищаем и заполняем пространственную сетку
+        self.spatial_grid.clear()
+        
+        # Добавляем живых организмов в сетку
+        alive_organisms = [org for org in self.organisms if org.alive]
+        for organism in alive_organisms:
+            self.spatial_grid.add_organism(organism)
+            
+        # Добавляем пищу в сетку
+        for food in self.food_sources:
+            if not food.get('consumed', False):
+                self.spatial_grid.add_food(food)
+        
+        # Обновляем организмы с оптимизацией
+        for organism in alive_organisms:
+            organism.update(dt, self.width, self.height, self.spatial_grid)
             
     def reset(self):
         """Сбрасывает симуляцию к начальному состоянию"""
@@ -272,3 +316,28 @@ class EvolutionSimulation:
         if not alive_organisms:
             return []
         return sorted(alive_organisms, key=lambda x: x.fitness, reverse=True)[:top_n]
+        
+    def get_performance_stats(self):
+        """Возвращает статистику производительности"""
+        if self.frame_count == 0:
+            return {"avg_frame_time": 0, "fps": 0, "optimization": self.use_optimization}
+            
+        avg_frame_time = self.update_time_sum / self.frame_count
+        fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+        
+        return {
+            "avg_frame_time": avg_frame_time * 1000,  # В миллисекундах
+            "fps": fps,
+            "optimization": self.use_optimization,
+            "population": len(self.organisms),
+            "frame_count": self.frame_count
+        }
+        
+    def toggle_optimization(self):
+        """Переключает режим оптимизации"""
+        self.use_optimization = not self.use_optimization
+        
+    def reset_performance_counters(self):
+        """Сбрасывает счётчики производительности"""
+        self.frame_count = 0
+        self.update_time_sum = 0

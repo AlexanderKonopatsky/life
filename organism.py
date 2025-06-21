@@ -57,7 +57,7 @@ class Organism:
         """Определяет, является ли организм всеядным"""
         return 0.4 <= self.genes['diet_preference'] <= 0.6
         
-    def update(self, dt, world_width, world_height, food_sources, other_organisms):
+    def update(self, dt, world_width, world_height, spatial_grid=None):
         """Обновляет состояние организма на каждом шаге симуляции"""
         if not self.alive:
             return
@@ -80,23 +80,28 @@ class Organism:
         # Расчёт приспособленности
         self.fitness = self.energy * 0.1 + self.age * 0.05 + (200 - self.last_meal) * 0.02
         
-        # Определяем поведение и цели
-        self._update_behavior(other_organisms, food_sources)
-        
-        # Движение с учётом поведения
-        self._move(dt, world_width, world_height)
-        
-        # Поиск пищи (растения для травоядных)
-        if self.is_herbivore() or self.is_omnivore():
-            self._seek_food(food_sources)
-        
-        # Охота (для хищников)
-        if self.is_predator() or self.is_omnivore():
-            self._hunt(other_organisms)
+        # Используем пространственную сетку для оптимизации
+        if spatial_grid:
+            # Определяем поведение и цели с оптимизированным поиском
+            self._update_behavior_optimized(spatial_grid)
+            
+            # Движение с учётом поведения
+            self._move(dt, world_width, world_height)
+            
+            # Поиск пищи и охота с оптимизацией
+            self._optimized_interactions(spatial_grid)
+        else:
+            # Старый неоптимизированный код для совместимости
+            self._legacy_update(dt, world_width, world_height)
         
         # Проверка на смерть (увеличиваем продолжительность жизни)
         if self.energy <= 0 or self.age > 2000:
             self.alive = False
+            
+    def _legacy_update(self, dt, world_width, world_height):
+        """Старая неоптимизированная логика для совместимости"""
+        # Простое движение без оптимизации
+        self._move(dt, world_width, world_height)
             
     def _update_behavior(self, other_organisms, food_sources):
         """Обновляет поведенческие цели"""
@@ -251,9 +256,124 @@ class Organism:
                         # Неудачная атака
                         self.hunt_cooldown = 20
                         self.energy -= 5  # Тратим энергию на неудачную атаку
-                
-
                         
+    def _update_behavior_optimized(self, spatial_grid):
+        """Оптимизированное обновление поведения с пространственной сеткой"""
+        self.target = None
+        self.fleeing_from = None
+        
+        # Поиск угроз для травоядных (ограниченный радиус)
+        if self.is_herbivore() or (self.is_omnivore() and self.genes['fear_sensitivity'] > 0.5):
+            nearby_organisms = spatial_grid.get_nearby_organisms(self, 80)
+            
+            closest_predator = None
+            min_predator_distance = float('inf')
+            
+            for other in nearby_organisms:
+                if other.is_predator():
+                    dx = self.x - other.x
+                    dy = self.y - other.y
+                    distance = dx * dx + dy * dy  # Используем квадрат расстояния
+                    
+                    if distance < min_predator_distance:
+                        min_predator_distance = distance
+                        closest_predator = other
+            
+            if closest_predator and min_predator_distance < (self.genes['fear_sensitivity'] * 60) ** 2:
+                self.fleeing_from = closest_predator
+                return
+        
+        # Поиск цели для хищников (ограниченный радиус)
+        if self.is_predator() and self.hunt_cooldown <= 0:
+            nearby_organisms = spatial_grid.get_nearby_organisms(self, 100)
+            
+            closest_prey = None
+            min_prey_distance = float('inf')
+            
+            for other in nearby_organisms:
+                if not other.is_predator() and other.genes['size'] <= self.genes['size'] * 1.2:
+                    dx = self.x - other.x
+                    dy = self.y - other.y
+                    distance = dx * dx + dy * dy
+                    
+                    if distance < min_prey_distance:
+                        min_prey_distance = distance
+                        closest_prey = other
+            
+            if closest_prey and min_prey_distance < 6400:  # 80^2
+                self.target = closest_prey
+                return
+        
+        # Поиск пищи для травоядных и всеядных (ограниченный радиус)
+        if self.is_herbivore() or self.is_omnivore():
+            nearby_food = spatial_grid.get_nearby_food(self, 120)
+            
+            if nearby_food:
+                closest_food = None
+                min_food_distance = float('inf')
+                
+                for food in nearby_food:
+                    dx = self.x - food['x']
+                    dy = self.y - food['y']
+                    distance = dx * dx + dy * dy
+                    
+                    if distance < min_food_distance:
+                        min_food_distance = distance
+                        closest_food = food
+                
+                if closest_food:
+                    self.target = closest_food
+                    
+    def _optimized_interactions(self, spatial_grid):
+        """Оптимизированные взаимодействия с использованием пространственной сетки"""
+        # Поиск пищи (растения для травоядных)
+        if (self.is_herbivore() or self.is_omnivore()) and isinstance(self.target, dict):
+            dx = self.x - self.target['x']
+            dy = self.y - self.target['y']
+            distance_squared = dx * dx + dy * dy
+            collision_distance = self.genes['size'] + self.target['size']
+            
+            if distance_squared < collision_distance * collision_distance:
+                # Потребляем пищу
+                energy_multiplier = 2.0 if self.is_herbivore() else 1.5
+                energy_gain = self.target['energy'] * self.genes['energy_efficiency'] * energy_multiplier
+                self.energy += energy_gain
+                self.target['consumed'] = True
+                self.last_meal = 0
+                self.target = None
+        
+                         # Охота (для хищников) - только на близких целях
+        if (self.is_predator() or self.is_omnivore()) and self.hunt_cooldown <= 0:
+            if self.target and hasattr(self.target, 'alive') and self.target.alive:
+                dx = self.x - self.target.x
+                dy = self.y - self.target.y
+                distance_squared = dx * dx + dy * dy
+                collision_distance = self.genes['size'] + self.target.genes['size']
+                
+                if distance_squared < collision_distance * collision_distance:
+                    # Расчёт успешности атаки
+                    attack_power = (self.genes['size'] + self.genes['speed'] + self.genes['aggression'] * 10) / 3
+                    defense_power = (self.target.genes['size'] + self.target.genes['speed'] + self.target.genes['fear_sensitivity'] * 5) / 3
+                    
+                    if attack_power > defense_power * random.uniform(0.8, 1.2):
+                        # Успешная охота
+                        energy_gain = self.target.energy * 0.6 * self.genes['energy_efficiency']
+                        self.energy += energy_gain
+                        self.last_meal = 0
+                        
+                        # Жертва теряет энергию или умирает
+                        self.target.energy -= self.target.energy * 0.8
+                        if self.target.energy <= 0:
+                            self.target.alive = False
+                            
+                        self.hunt_cooldown = 50
+                    else:
+                        # Неудачная атака
+                        self.hunt_cooldown = 20
+                        self.energy -= 5
+                    
+                    self.target = None
+                      
     def can_reproduce(self):
         """Проверяет, может ли организм размножаться"""
         return self.energy > self.genes['reproduction_threshold'] and self.age > 100

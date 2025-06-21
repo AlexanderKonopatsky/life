@@ -48,6 +48,7 @@ class EvolutionGameGUI:
         ttk.Button(control_frame, text="Сброс", command=self._reset_simulation).pack(side=tk.LEFT, padx=2)
         ttk.Button(control_frame, text="Настройки", command=self._show_settings).pack(side=tk.LEFT, padx=2)
         ttk.Button(control_frame, text="Графики эволюции", command=self._show_evolution_graphs).pack(side=tk.LEFT, padx=2)
+        ttk.Button(control_frame, text="Оптимизация", command=self._toggle_optimization).pack(side=tk.LEFT, padx=2)
         
         # Правая панель (информация и статистика)
         right_frame = ttk.Frame(main_frame)
@@ -199,6 +200,9 @@ class EvolutionGameGUI:
         """Обновление статистики"""
         stats = self.simulation.get_statistics()
         
+        # Получаем статистику производительности
+        perf_stats = self.simulation.get_performance_stats()
+        
         stats_text = f"""ЭКОСИСТЕМА
 
 Всего организмов: {stats['population']}
@@ -217,6 +221,11 @@ class EvolutionGameGUI:
 Эффективность: {stats['avg_energy_efficiency']:.2f}
 Агрессивность: {stats['avg_aggression']:.2f}
 Приспособленность: {stats['avg_fitness']:.1f}
+
+ПРОИЗВОДИТЕЛЬНОСТЬ:
+FPS: {perf_stats['fps']:.1f}
+Время кадра: {perf_stats['avg_frame_time']:.1f}мс
+Оптимизация: {'ВКЛ' if perf_stats['optimization'] else 'ВЫКЛ'}
 
 ВРЕМЯ: {self.simulation.time_step}
 """
@@ -363,9 +372,16 @@ class EvolutionGameGUI:
                 graph_text += f"Размер: {org.genes['size']:.2f} | "
                 graph_text += f"Эффективность: {org.genes['energy_efficiency']:.2f}\n\n"
         
-        info_text.insert(1.0, graph_text)
+                info_text.insert(1.0, graph_text)
         info_text.config(state=tk.DISABLED)
         
+    def _toggle_optimization(self):
+        """Переключает оптимизацию производительности"""
+        self.simulation.toggle_optimization()
+        perf_stats = self.simulation.get_performance_stats()
+        status = "включена" if perf_stats['optimization'] else "выключена"
+        messagebox.showinfo("Оптимизация", f"Оптимизация производительности {status}")
+         
     def run(self):
         """Запуск игры"""
         self.root.mainloop()
