@@ -12,7 +12,7 @@ def test_basic_simulation():
     print("=== Тест симуляции эволюции ===")
     
     # Создаем симуляцию
-    sim = EvolutionSimulation(width=400, height=300)
+    sim = EvolutionSimulation(width=900, height=700)
     
     print(f"Начальная популяция: {len(sim.get_organisms())}")
     
@@ -71,7 +71,7 @@ def test_evolution_trends():
     """Тест эволюционных трендов"""
     print("\n=== Тест эволюционных трендов ===")
     
-    sim = EvolutionSimulation(width=600, height=400)
+    sim = EvolutionSimulation(width=900, height=700)
     sim.set_parameters(initial_organisms=15, food_spawn_rate=0.2)
     
     print("Наблюдение эволюции в условиях скудных ресурсов...")

@@ -11,10 +11,10 @@ class EvolutionGameGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Эволюция: Простая жизнь")
-        self.root.geometry("1600x1200")
+        self.root.geometry("1200x900")
         
         # Симуляция
-        self.simulation = EvolutionSimulation(width=1400, height=1000)
+        self.simulation = EvolutionSimulation(width=900, height=700)
         self.running = False
         self.simulation_speed = 1.0
         self.selected_organism = None
@@ -36,7 +36,7 @@ class EvolutionGameGUI:
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Канвас для симуляции
-        self.canvas = tk.Canvas(left_frame, width=1400, height=1000, bg='#001122')
+        self.canvas = tk.Canvas(left_frame, width=900, height=700, bg='#001122')
         self.canvas.pack(pady=5)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         

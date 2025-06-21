@@ -13,7 +13,7 @@ def demo_ecosystem():
     print("🌍 === ДЕМО ЭКОСИСТЕМЫ v2.0 === 🌍\n")
     
     # Создаем симуляцию
-    sim = EvolutionSimulation(width=1400, height=1000)
+    sim = EvolutionSimulation(width=900, height=700)
     
     print(f"📏 Размер мира: {sim.width}x{sim.height}")
     print(f"🌱 Максимум растений: {sim.max_food}")

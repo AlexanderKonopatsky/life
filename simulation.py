@@ -5,7 +5,7 @@ from organism import Organism
 class EvolutionSimulation:
     """Основной класс симуляции эволюции"""
     
-    def __init__(self, width=1400, height=1000):
+    def __init__(self, width=900, height=700):
         self.width = width
         self.height = height
         
