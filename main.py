@@ -4,6 +4,7 @@ import threading
 import time
 import math
 from simulation import EvolutionSimulation
+from async_simulation import AsyncSimulation
 
 # Опциональный импорт matplotlib для графиков
 try:
@@ -22,11 +23,15 @@ class EvolutionGameGUI:
         self.root.title("Эволюция: Простая жизнь")
         self.root.geometry("1200x900")
         
-        # Симуляция
-        self.simulation = EvolutionSimulation(width=900, height=700)
+        # Асинхронная симуляция
+        self.async_simulation = AsyncSimulation()
         self.running = False
         self.simulation_speed = 1.0
         self.selected_organism = None
+        
+        # Фиксированная частота GUI: 30 FPS независимо от популяции
+        self.gui_fps = 30
+        self.gui_update_interval = int(1000 / self.gui_fps)  # мс
         
         # Настройка интерфейса
         self._setup_ui()
@@ -93,50 +98,39 @@ class EvolutionGameGUI:
         """Запуск/остановка симуляции"""
         self.running = not self.running
         if self.running:
-            self._run_simulation()
+            self.async_simulation.start()
+        else:
+            self.async_simulation.pause()
             
-    def _run_simulation(self):
-        """Запуск симуляции в отдельном потоке"""
-        def simulation_loop():
-            while self.running:
-                self.simulation.update(dt=self.simulation_speed)
-                time.sleep(0.05)  # 20 FPS
-                
-        thread = threading.Thread(target=simulation_loop, daemon=True)
-        thread.start()
-        
     def _reset_simulation(self):
         """Сброс симуляции"""
         self.running = False
-        self.simulation.reset()
+        self.async_simulation.reset()
         self.selected_organism = None
         
     def _update_speed(self, value):
         """Обновление скорости симуляции"""
         self.simulation_speed = float(value)
+        self.async_simulation.set_speed(self.simulation_speed)
         self.speed_label.config(text=f"Скорость: {self.simulation_speed:.1f}x")
         
     def _on_canvas_click(self, event):
         """Обработка клика по канвасу"""
-        # Поиск ближайшего организма
-        min_distance = float('inf')
-        closest_organism = None
-        
-        for organism in self.simulation.get_organisms():
-            distance = math.sqrt((event.x - organism.x)**2 + (event.y - organism.y)**2)
-            if distance < min_distance and distance < 20:
-                min_distance = distance
-                closest_organism = organism
-                
-        self.selected_organism = closest_organism
+        # Поиск ближайшего организма через асинхронную симуляцию
+        self.selected_organism = self.async_simulation.find_organism_by_position(event.x, event.y, max_distance=20)
         
     def _update_display(self):
-        """Обновление отображения"""
+        """Обновление отображения с фиксированной частотой 30 FPS"""
         # Очистка канваса
         self.canvas.delete("all")
         
-        # Отрисовка пищи (растения)
-        for food in self.simulation.get_food_sources():
+        # Получаем снимки данных из асинхронной симуляции
+        food_data = self.async_simulation.get_food_snapshot()
+        organisms_data = self.async_simulation.get_organisms_snapshot() 
+        best_organisms_data = self.async_simulation.get_best_organisms_snapshot(top_n=10)
+        
+        # Отрисовка пищи
+        for food in food_data:
             x, y = food['x'], food['y']
             size = food['size']
             
@@ -153,43 +147,37 @@ class EvolutionGameGUI:
                 
             self.canvas.create_oval(x-size, y-size, x+size, y+size, 
                                   fill=color, outline=outline)
-            
-        # Отрисовка организмов с оптимизацией для больших популяций
-        organisms = self.simulation.get_organisms()
-        population_size = len(organisms)
         
-        # РАДИКАЛЬНАЯ оптимизация отрисовки для больших популяций
+        # Адаптивная отрисовка организмов для больших популяций
+        population_size = len(organisms_data)
+        
         if population_size > 2000:
-            # Показываем каждый 5-й организм при огромных популяциях
-            organisms_to_draw = organisms[::5]
-            best_organisms = self.simulation.get_best_organisms(top_n=15)
+            # Показываем каждый 4-й организм
+            organisms_to_draw = organisms_data[::4]
         elif population_size > 1000:
-            # Показываем каждый 3-й организм для больших популяций
-            organisms_to_draw = organisms[::3]
-            best_organisms = self.simulation.get_best_organisms(top_n=12)
+            # Показываем каждый 3-й организм
+            organisms_to_draw = organisms_data[::3]
         elif population_size > 500:
             # Показываем каждый 2-й организм
-            organisms_to_draw = organisms[::2]
-            best_organisms = self.simulation.get_best_organisms(top_n=8)
-        elif population_size > 200:
-            # Показываем каждый 1.5-й организм (округляем)
-            organisms_to_draw = organisms[::max(1, population_size//150)]
-            best_organisms = self.simulation.get_best_organisms(top_n=6)
+            organisms_to_draw = organisms_data[::2]
         else:
-            # Показываем всех только для малых популяций
-            organisms_to_draw = organisms
-            best_organisms = self.simulation.get_best_organisms(top_n=5)
+            # Показываем всех
+            organisms_to_draw = organisms_data
         
-        for organism in organisms_to_draw:
-            x, y = organism.x, organism.y
-            size = organism.genes['size']
-            color = self._rgb_to_hex(*organism.get_color())
+        # Создаем множество лучших организмов для быстрой проверки
+        best_organisms_set = {org_data['original'] for org_data in best_organisms_data if 'original' in org_data}
+        
+        for org_data in organisms_to_draw:
+            x, y = org_data['x'], org_data['y']
+            size = org_data['size']
+            color = self._rgb_to_hex(*org_data['color'])
             
-            # Выделение выбранного организма
-            if organism == self.selected_organism:
+            # Выделение организмов
+            original_org = org_data.get('original')
+            if original_org == self.selected_organism:
                 outline = 'yellow'
                 outline_width = 3
-            elif organism in best_organisms:
+            elif original_org in best_organisms_set:
                 # Выделяем лучших организмов зелёной обводкой
                 outline = 'lime'
                 outline_width = 2
@@ -201,7 +189,7 @@ class EvolutionGameGUI:
                                   fill=color, outline=outline, width=outline_width)
                                   
             # Показ энергии как полоска
-            energy_ratio = min(1.0, organism.energy / 100)
+            energy_ratio = min(1.0, org_data['energy'] / 100)
             bar_width = size * 2
             bar_height = 3
             bar_x = x - bar_width / 2
@@ -220,22 +208,8 @@ class EvolutionGameGUI:
         # Обновление информации о выбранном организме
         self._update_organism_info()
         
-        # БОЛЕЕ АГРЕССИВНАЯ адаптивная частота обновления GUI
-        if population_size > 3000:
-            gui_update_delay = 200  # 5 FPS для гигантских популяций
-        elif population_size > 2000:
-            gui_update_delay = 150  # 6.7 FPS для очень больших популяций
-        elif population_size > 1000:
-            gui_update_delay = 100  # 10 FPS для больших популяций
-        elif population_size > 500:
-            gui_update_delay = 80   # 12.5 FPS для средних популяций
-        elif population_size > 200:
-            gui_update_delay = 60   # 16.7 FPS для умеренных популяций
-        else:
-            gui_update_delay = 50   # 20 FPS для малых популяций
-            
-        # Планирование следующего обновления
-        self.root.after(gui_update_delay, self._update_display)
+        # 🎯 ФИКСИРОВАННАЯ ЧАСТОТА GUI: всегда 30 FPS независимо от популяции!
+        self.root.after(self.gui_update_interval, self._update_display)
         
     def _rgb_to_hex(self, r, g, b):
         """Преобразование RGB в hex"""
@@ -243,20 +217,19 @@ class EvolutionGameGUI:
         
     def _update_statistics(self):
         """Обновление статистики"""
-        stats = self.simulation.get_statistics()
+        stats = self.async_simulation.get_statistics_snapshot()
         
         # Получаем статистику производительности
-        perf_stats = self.simulation.get_performance_stats()
+        perf_stats = self.async_simulation.get_performance_snapshot()
         
-        # Определяем активный режим оптимизации
-        current_population = stats['population']
-        if (hasattr(self.simulation, 'parallel_processor') and 
-            self.simulation.parallel_processor and current_population > 50):
-            optimization_mode = f"🚀 МНОГОПРОЦЕССОРНОСТЬ (x{self.simulation.parallel_processor.num_processes})"
-        elif self.simulation.use_optimization:
-            optimization_mode = "⚡ ПРОСТРАНСТВЕННАЯ СЕТКА"
+        # Определяем активный режим оптимизации из данных
+        current_population = stats.get('population', 0)
+        if perf_stats.get('async_mode', False):
+            sim_fps = perf_stats.get('async_simulation_fps', 0)
+            speed = perf_stats.get('speed_multiplier', 1.0)
+            optimization_mode = f"🚀 АСИНХРОННАЯ СИМУЛЯЦИЯ ({sim_fps:.1f} FPS, {speed:.1f}x)"
         else:
-            optimization_mode = "❌ БЕЗ ОПТИМИЗАЦИИ"
+            optimization_mode = "❌ СИНХРОННЫЙ РЕЖИМ"
         
         stats_text = f"""ЭКОСИСТЕМА
 
@@ -294,16 +267,29 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
         """Обновление информации о выбранном организме"""
         if self.selected_organism and self.selected_organism.alive:
             org = self.selected_organism
-            info = org.get_info()
+            info = self.async_simulation.get_organism_info(org)
+            if not info:
+                self.selected_organism = None
+                return
             
             # Определяем ранг организма по приспособленности
-            best_organisms = self.simulation.get_best_organisms(top_n=len(self.simulation.get_organisms()))
+            best_organisms_data = self.async_simulation.get_best_organisms_snapshot(top_n=50)
+            best_organisms = [org_data.get('original') for org_data in best_organisms_data if 'original' in org_data]
             rank = best_organisms.index(org) + 1 if org in best_organisms else "?"
             
-            # Определяем символ для типа
-            type_symbol = "[H]" if org.is_predator() else "[T]" if org.is_herbivore() else "[O]"
+            # Определяем символ для типа из информации
+            diet_pref = info['genes'].get('diet_preference', 0.5)
+            if diet_pref > 0.6:
+                type_symbol = "[H]"
+                type_name = "ХИЩНИК"
+            elif diet_pref < 0.4:
+                type_symbol = "[T]" 
+                type_name = "ТРАВОЯДНЫЙ"
+            else:
+                type_symbol = "[O]"
+                type_name = "ВСЕЯДНЫЙ"
             
-            info_text = f"""{type_symbol} {org.get_type_name().upper()}
+            info_text = f"""{type_symbol} {type_name}
 
 Позиция: ({info['position'][0]:.1f}, {info['position'][1]:.1f})
 Энергия: {info['energy']:.1f}
@@ -324,9 +310,9 @@ CPU ядер: {perf_stats.get('cpu_cores', 1)}
 Мутации: {info['genes']['mutation_rate']:.3f}
 
 СОСТОЯНИЕ:
-Размножение: {'Да' if org.can_reproduce() else 'Нет'}
-Цель: {type(org.target).__name__ if org.target else 'Нет'}
-Убегает: {'Да' if org.fleeing_from else 'Нет'}
+Размножение: {'Да' if info.get('can_reproduce', False) else 'Нет'}
+Возраст/Макс: {info['age']:.0f}/{info.get('max_age', 1000):.0f}
+Статус: {'Активен' if org and org.alive else 'Неизвестен'}
 """
         else:
             info_text = "Нажмите на организм\nдля получения информации"
