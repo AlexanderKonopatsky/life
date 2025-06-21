@@ -3,6 +3,19 @@ import time
 from organism import Organism
 from spatial_grid import SpatialGrid
 
+# Опциональный импорт многопроцессорной оптимизации
+try:
+    from parallel_optimization import (
+        ParallelSimulationProcessor, 
+        PerformanceMonitor,
+        convert_organism_to_data,
+        update_organism_from_data
+    )
+    PARALLEL_AVAILABLE = True
+except ImportError:
+    PARALLEL_AVAILABLE = False
+    print("⚠️ Модуль параллельной оптимизации недоступен")
+
 class EvolutionSimulation:
     """Основной класс симуляции эволюции"""
     
@@ -61,6 +74,15 @@ class EvolutionSimulation:
         # Пространственная индексация для оптимизации
         self.spatial_grid = SpatialGrid(self.width, self.height, cell_size=80)
         self.use_optimization = True  # Флаг для включения оптимизации
+        
+        # Многопроцессорная оптимизация
+        if PARALLEL_AVAILABLE:
+            self.parallel_processor = ParallelSimulationProcessor()
+            self.performance_monitor = PerformanceMonitor()
+            print(f"🚀 Многопроцессорное ускорение: {self.parallel_processor.num_processes} ядер")
+        else:
+            self.parallel_processor = None
+            self.performance_monitor = None
         
         # Счётчики для профилирования
         self.frame_count = 0
@@ -200,7 +222,15 @@ class EvolutionSimulation:
         # Создаем пищу
         self._spawn_food()
         
-        if self.use_optimization and len(self.organisms) > 50:
+        population_size = len([org for org in self.organisms if org.alive])
+        
+        # Выбираем стратегию обновления в зависимости от размера популяции
+        if (PARALLEL_AVAILABLE and self.parallel_processor and 
+            self.performance_monitor and 
+            self.performance_monitor.should_use_parallel(population_size)):
+            # Многопроцессорное обновление для очень больших популяций
+            self._parallel_update(dt)
+        elif self.use_optimization and population_size > 50:
             # Оптимизированное обновление для больших популяций
             self._optimized_update(dt)
         else:
@@ -249,6 +279,50 @@ class EvolutionSimulation:
         # Обновляем организмы с оптимизацией
         for organism in alive_organisms:
             organism.update(dt, self.width, self.height, self.spatial_grid)
+            
+    def _parallel_update(self, dt):
+        """Многопроцессорное обновление для очень больших популяций"""
+        if not PARALLEL_AVAILABLE or not self.parallel_processor:
+            # Fallback к обычному обновлению
+            self._optimized_update(dt)
+            return
+            
+        alive_organisms = [org for org in self.organisms if org.alive]
+        if len(alive_organisms) < 200:
+            # Для малых популяций параллелизм неэффективен
+            self._optimized_update(dt)
+            return
+            
+        start_time = time.time()
+        
+        try:
+            # Конвертируем организмы в словари для передачи между процессами
+            organisms_data = [convert_organism_to_data(org) for org in alive_organisms]
+            
+            # Обновляем организмы параллельно
+            if not self.parallel_processor.use_parallel:
+                self.parallel_processor.start_pool()
+                
+            updated_data = self.parallel_processor.parallel_update_organisms(
+                organisms_data, self.width, self.height, dt
+            )
+            
+            # Применяем изменения обратно к объектам организмов
+            for org, data in zip(alive_organisms, updated_data):
+                update_organism_from_data(org, data)
+                
+            # Записываем время для мониторинга
+            parallel_time = time.time() - start_time
+            if self.performance_monitor:
+                self.performance_monitor.add_measurement(
+                    len(alive_organisms), 
+                    parallel_time=parallel_time
+                )
+                
+        except Exception as e:
+            print(f"⚠️ Ошибка параллельного обновления: {e}")
+            # Fallback к обычному методу
+            self._optimized_update(dt)
             
     def reset(self):
         """Сбрасывает симуляцию к начальному состоянию"""
@@ -352,12 +426,28 @@ class EvolutionSimulation:
         avg_frame_time = self.update_time_sum / self.frame_count
         fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
         
+        # Добавляем информацию о параллельной обработке
+        parallel_info = {}
+        if PARALLEL_AVAILABLE and self.performance_monitor:
+            parallel_info.update({
+                "parallel_available": True,
+                "cpu_cores": self.parallel_processor.num_processes if self.parallel_processor else 0,
+                "parallel_speedup": self.performance_monitor.get_speedup_ratio()
+            })
+        else:
+            parallel_info.update({
+                "parallel_available": False,
+                "cpu_cores": 1,
+                "parallel_speedup": 1.0
+            })
+        
         return {
             "avg_frame_time": avg_frame_time * 1000,  # В миллисекундах
             "fps": fps,
             "optimization": self.use_optimization,
             "population": len(self.organisms),
-            "frame_count": self.frame_count
+            "frame_count": self.frame_count,
+            **parallel_info
         }
         
     def toggle_optimization(self):

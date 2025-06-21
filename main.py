@@ -235,6 +235,8 @@ class EvolutionGameGUI:
 FPS: {perf_stats['fps']:.1f}
 Время кадра: {perf_stats['avg_frame_time']:.1f}мс
 Оптимизация: {'ВКЛ' if perf_stats['optimization'] else 'ВЫКЛ'}
+CPU ядер: {perf_stats.get('cpu_cores', 1)}
+{'Параллелизм: ' + str(perf_stats.get('parallel_speedup', 1.0))[:4] + 'x' if perf_stats.get('parallel_available', False) else 'Параллелизм: НЕДОСТУПЕН'}
 
 ВРЕМЯ: {self.simulation.time_step}
 """
