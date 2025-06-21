@@ -158,17 +158,25 @@ class EvolutionGameGUI:
         organisms = self.simulation.get_organisms()
         population_size = len(organisms)
         
-        # Адаптивная отрисовка: для больших популяций показываем не всех
-        if population_size > 1000:
-            # Показываем каждый 3-й организм для производительности
+        # РАДИКАЛЬНАЯ оптимизация отрисовки для больших популяций
+        if population_size > 2000:
+            # Показываем каждый 5-й организм при огромных популяциях
+            organisms_to_draw = organisms[::5]
+            best_organisms = self.simulation.get_best_organisms(top_n=15)
+        elif population_size > 1000:
+            # Показываем каждый 3-й организм для больших популяций
             organisms_to_draw = organisms[::3]
-            best_organisms = self.simulation.get_best_organisms(top_n=10)
+            best_organisms = self.simulation.get_best_organisms(top_n=12)
         elif population_size > 500:
             # Показываем каждый 2-й организм
             organisms_to_draw = organisms[::2]
             best_organisms = self.simulation.get_best_organisms(top_n=8)
+        elif population_size > 200:
+            # Показываем каждый 1.5-й организм (округляем)
+            organisms_to_draw = organisms[::max(1, population_size//150)]
+            best_organisms = self.simulation.get_best_organisms(top_n=6)
         else:
-            # Показываем всех
+            # Показываем всех только для малых популяций
             organisms_to_draw = organisms
             best_organisms = self.simulation.get_best_organisms(top_n=5)
         
@@ -212,13 +220,17 @@ class EvolutionGameGUI:
         # Обновление информации о выбранном организме
         self._update_organism_info()
         
-        # Адаптивная частота обновления GUI в зависимости от популяции
-        if population_size > 2000:
-            gui_update_delay = 100  # 10 FPS для очень больших популяций
+        # БОЛЕЕ АГРЕССИВНАЯ адаптивная частота обновления GUI
+        if population_size > 3000:
+            gui_update_delay = 200  # 5 FPS для гигантских популяций
+        elif population_size > 2000:
+            gui_update_delay = 150  # 6.7 FPS для очень больших популяций
         elif population_size > 1000:
-            gui_update_delay = 80   # 12.5 FPS для больших популяций
+            gui_update_delay = 100  # 10 FPS для больших популяций
         elif population_size > 500:
-            gui_update_delay = 60   # 16.7 FPS для средних популяций
+            gui_update_delay = 80   # 12.5 FPS для средних популяций
+        elif population_size > 200:
+            gui_update_delay = 60   # 16.7 FPS для умеренных популяций
         else:
             gui_update_delay = 50   # 20 FPS для малых популяций
             
@@ -235,6 +247,16 @@ class EvolutionGameGUI:
         
         # Получаем статистику производительности
         perf_stats = self.simulation.get_performance_stats()
+        
+        # Определяем активный режим оптимизации
+        current_population = stats['population']
+        if (hasattr(self.simulation, 'parallel_processor') and 
+            self.simulation.parallel_processor and current_population > 50):
+            optimization_mode = f"🚀 МНОГОПРОЦЕССОРНОСТЬ (x{self.simulation.parallel_processor.num_processes})"
+        elif self.simulation.use_optimization:
+            optimization_mode = "⚡ ПРОСТРАНСТВЕННАЯ СЕТКА"
+        else:
+            optimization_mode = "❌ БЕЗ ОПТИМИЗАЦИИ"
         
         stats_text = f"""ЭКОСИСТЕМА
 
@@ -258,9 +280,9 @@ class EvolutionGameGUI:
 ПРОИЗВОДИТЕЛЬНОСТЬ:
 FPS: {perf_stats['fps']:.1f}
 Время кадра: {perf_stats['avg_frame_time']:.1f}мс
-Оптимизация: {'ВКЛ' if perf_stats['optimization'] else 'ВЫКЛ'}
+РЕЖИМ: {optimization_mode}
 CPU ядер: {perf_stats.get('cpu_cores', 1)}
-{'Параллелизм: ' + str(perf_stats.get('parallel_speedup', 1.0))[:4] + 'x' if perf_stats.get('parallel_available', False) else 'Параллелизм: НЕДОСТУПЕН'}
+{'Ускорение: ' + str(perf_stats.get('parallel_speedup', 1.0))[:4] + 'x' if perf_stats.get('parallel_available', False) else 'Параллелизм: НЕДОСТУПЕН'}
 
 ВРЕМЯ: {self.simulation.time_step}
 """
